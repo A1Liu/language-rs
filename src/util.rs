@@ -4,12 +4,12 @@ use std::mem::size_of;
 const BUCKET_SIZE: usize = 1024 * 1024;
 
 #[derive(Clone, Copy)]
-struct Bucket {
+pub struct Bucket {
     begin: *mut u8,
     end: *mut u8,
 }
 
-struct Buckets {
+pub struct Buckets {
     pub buckets: Vec<Bucket>,
 }
 

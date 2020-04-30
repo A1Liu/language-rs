@@ -1,25 +1,40 @@
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::str::from_utf8_unchecked;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Token<'a> {
-    Pass(usize),
-    Ident { id: usize, location: usize },
-    LParen(usize),
-    RParen(usize),
-    Plus(usize),
-    Minus(usize),
-    Star(usize),
-    Div(usize),
-    Comma(usize),
-    Newline(usize),
-    Indent { begin: usize, end: usize },
+    Pass(u32),
+    Ident {
+        id: u32,
+        location: u32,
+    },
+    LParen(u32),
+    RParen(u32),
+    Plus(u32),
+    Minus(u32),
+    Star(u32),
+    Div(u32),
+    Comma(u32),
+    Newline(u32),
+    Indent {
+        begin: u32,
+        end: u32,
+    },
     Dedent,
     UnknownDedent,
     Unknown(&'a str),
     End,
-    Integer(i64),
-    FloatingPoint(f64),
+    Integer {
+        value: u64,
+        begin: u32,
+        end: NonZeroU32,
+    },
+    FloatingPoint {
+        value: f64,
+        begin: u32,
+        end: NonZeroU32,
+    },
 }
 
 #[derive(Eq, PartialEq)]
@@ -31,11 +46,11 @@ enum LexerState {
 }
 
 pub struct Lexer<'a> {
-    data: &'a [u8],
-    id_map: HashMap<&'a str, usize>,
-    id_list: Vec<&'a str>,
+    pub data: &'a [u8],
+    pub id_map: HashMap<&'a str, u32>,
+    pub id_list: Vec<&'a str>,
     indent_stack: Vec<u16>,
-    index: usize,
+    index: u32,
     indent_level: u16,
     paren_count: u8,
     state: LexerState,
@@ -70,19 +85,19 @@ impl<'a> Lexer<'a> {
         };
     }
 
-    fn substr<'b>(&'b self, start: usize, end: usize) -> &'a str {
-        return unsafe { from_utf8_unchecked(&self.data[start..end]) };
+    fn substr<'b>(&'b self, start: u32, end: u32) -> &'a str {
+        return unsafe { from_utf8_unchecked(&self.data[(start as usize)..(end as usize)]) };
     }
 
     #[inline]
     fn cur(&self) -> u8 {
-        return self.data[self.index];
+        return self.data[self.index as usize];
     }
 
     fn next_indent(&mut self) -> Token<'a> {
         let mut indent_level: u16 = 0;
         let mut begin = self.index;
-        while self.index < self.data.len() {
+        while self.index < self.data.len() as u32 {
             match self.cur() {
                 b'\n' => {
                     indent_level = 0;
@@ -103,7 +118,7 @@ impl<'a> Lexer<'a> {
         }
 
         let prev_indent = *self.indent_stack.last().unwrap();
-        if self.index == self.data.len() {
+        if self.index == self.data.len() as u32 {
             self.state = LexerState::End;
             return Token::End;
         } else if indent_level < prev_indent {
@@ -143,16 +158,17 @@ impl<'a> Lexer<'a> {
 
     fn next_normal(&mut self) -> Token<'a> {
         loop {
-            while self.index < self.data.len() && (self.cur() == b' ' || self.cur() == b'\t') {
+            while self.index < self.data.len() as u32 && (self.cur() == b' ' || self.cur() == b'\t')
+            {
                 self.index += 1;
             }
 
-            if self.index == self.data.len() {
+            if self.index == self.data.len() as u32 {
                 self.state = LexerState::End;
                 return Token::End;
             }
 
-            let ret_val = match self.data[self.index] {
+            let ret_val = match self.cur() {
                 b'(' => {
                     self.index += 1;
                     self.paren_count += 1;
@@ -194,21 +210,32 @@ impl<'a> Lexer<'a> {
                 }
                 b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9' => {
                     let begin = self.index;
-                    while self.index < self.data.len() && self.cur() <= b'9' && self.cur() >= b'0' {
+                    while self.index < self.data.len() as u32
+                        && self.cur() <= b'9'
+                        && self.cur() >= b'0'
+                    {
                         self.index += 1;
                     }
 
                     if self.cur() == b'.' {
                         self.index += 1;
-                        while self.index < self.data.len()
+                        while self.index < self.data.len() as u32
                             && self.cur() <= b'9'
                             && self.cur() >= b'0'
                         {
                             self.index += 1;
                         }
-                        Token::FloatingPoint(self.substr(begin, self.index).parse().unwrap())
+                        Token::FloatingPoint {
+                            value: self.substr(begin, self.index).parse().unwrap(),
+                            begin,
+                            end: NonZeroU32::new(self.index).unwrap(),
+                        }
                     } else {
-                        Token::Integer(self.substr(begin, self.index).parse().unwrap())
+                        Token::Integer {
+                            value: self.substr(begin, self.index).parse().unwrap(),
+                            begin,
+                            end: NonZeroU32::new(self.index).unwrap(),
+                        }
                     }
                 }
                 c => {
@@ -221,14 +248,14 @@ impl<'a> Lexer<'a> {
                 }
             };
 
-            if self.index == self.data.len() {
+            if self.index == self.data.len() as u32 {
                 self.state = LexerState::End;
             }
             return ret_val;
         }
 
         let begin = self.index;
-        while self.index < self.data.len() && (self.data[self.index] as char).is_alphanumeric() {
+        while self.index < self.data.len() as u32 && (self.cur() as char).is_alphanumeric() {
             self.index += 1;
         }
 
@@ -240,7 +267,7 @@ impl<'a> Lexer<'a> {
                 let id = if self.id_map.contains_key(x) {
                     self.id_map[x]
                 } else {
-                    let id = self.id_list.len();
+                    let id = self.id_list.len() as u32;
                     self.id_map.insert(x, id);
                     id
                 };

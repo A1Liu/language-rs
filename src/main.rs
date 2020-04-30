@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 
 mod lexer;
+mod parser;
+mod syntax_tree;
 mod util;
 
 use lexer::*;
