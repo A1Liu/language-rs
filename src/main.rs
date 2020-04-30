@@ -7,17 +7,12 @@ mod syntax_tree;
 mod util;
 
 use lexer::*;
+use parser::*;
 
 fn main() {
-    let mut l = Lexer::new("(hey, 12.2 + 12)");
+    let mut buckets = util::Buckets::new();
+    let mut l = Lexer::new("hey\n12\n20");
+    let mut p = Parser::new(&mut buckets, l);
 
-    let mut tok = l.next();
-
-    let mut tokens = Vec::new();
-    while tok != Token::End {
-        tokens.push(tok);
-        tok = l.next();
-    }
-
-    println!("{:?}", tokens);
+    println!("{:?}", p.try_parse_program());
 }

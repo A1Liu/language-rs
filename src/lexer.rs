@@ -217,7 +217,7 @@ impl<'a> Lexer<'a> {
                         self.index += 1;
                     }
 
-                    if self.cur() == b'.' {
+                    if self.index < self.data.len() as u32 && self.cur() == b'.' {
                         self.index += 1;
                         while self.index < self.data.len() as u32
                             && self.cur() <= b'9'
@@ -259,9 +259,7 @@ impl<'a> Lexer<'a> {
             self.index += 1;
         }
 
-        let id_string = self.substr(begin, self.index);
-
-        return match id_string {
+        return match self.substr(begin, self.index) {
             "pass" => Token::Pass(begin),
             x => {
                 let id = if self.id_map.contains_key(x) {
@@ -269,6 +267,7 @@ impl<'a> Lexer<'a> {
                 } else {
                     let id = self.id_list.len() as u32;
                     self.id_map.insert(x, id);
+                    self.id_list.push(x);
                     id
                 };
 

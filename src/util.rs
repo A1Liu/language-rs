@@ -1,5 +1,7 @@
 use std::alloc::{alloc, dealloc, Layout};
+use std::marker::PhantomData;
 use std::mem::size_of;
+use std::slice::from_raw_parts_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
@@ -9,11 +11,20 @@ pub struct Bucket {
     end: *mut u8,
 }
 
-pub struct Buckets {
+pub struct Buckets<'a> {
     pub buckets: Vec<Bucket>,
+    unused: PhantomData<&'a u8>,
 }
 
-impl Buckets {
+impl<'a> Buckets<'a> {
+    pub fn new() -> Self {
+        let begin = unsafe { alloc(Layout::from_size_align_unchecked(BUCKET_SIZE, 8)) };
+        return Buckets {
+            buckets: vec![Bucket { begin, end: begin }],
+            unused: PhantomData,
+        };
+    }
+
     pub fn drop(&mut self) {
         for bucket in &self.buckets {
             unsafe {
@@ -29,11 +40,6 @@ impl Buckets {
 
     pub unsafe fn new_unsafe(&mut self, size: usize) -> *mut u8 {
         let size = (size - 1) / 16 * 16 + 16;
-        if self.buckets.len() == 0 {
-            let begin = alloc(Layout::from_size_align_unchecked(BUCKET_SIZE, 8));
-            self.buckets.push(Bucket { begin, end: begin });
-        }
-
         if size > BUCKET_SIZE {
             let bucket = self.buckets.last().unwrap().clone();
             let begin = alloc(Layout::from_size_align_unchecked(size, 8));
@@ -58,18 +64,22 @@ impl Buckets {
         return ret_location;
     }
 
-    pub fn new<T>(&mut self, t: T) -> &mut T {
+    pub fn add<T>(&mut self, t: T) -> &'a mut T {
         return unsafe { &mut *(self.new_unsafe(size_of::<T>()) as *mut T) };
     }
 
-    pub fn store_array<T>(&mut self, values: Vec<T>) {
+    pub fn add_array<T>(&mut self, values: Vec<T>) -> &'a mut [T] {
         let size = size_of::<T>();
-        let mut location = unsafe { self.new_unsafe(values.len() * size) as *mut T };
+        let len = values.len();
+        let begin = unsafe { self.new_unsafe(values.len() * size) as *mut T };
+        let mut location = begin;
         for value in values {
             unsafe {
                 *location = value;
                 location = location.add(1);
             }
         }
+
+        return unsafe { from_raw_parts_mut(begin, len) };
     }
 }

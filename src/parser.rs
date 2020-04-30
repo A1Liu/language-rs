@@ -3,13 +3,14 @@ use crate::syntax_tree::*;
 use crate::util::*;
 use std::ops::Range;
 
+#[derive(Debug)]
 pub struct Error<'a> {
     location: Range<u32>,
     message: &'a str,
 }
 
 pub struct Parser<'a> {
-    buckets: &'a mut Buckets,
+    buckets: &'a mut Buckets<'a>,
     pub data: &'a [u8],
     pub id_list: Vec<&'a str>,
     tokens: Vec<Token<'a>>,
@@ -17,7 +18,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(buckets: &'a mut Buckets, mut lexer: Lexer<'a>) -> Self {
+    pub fn new(buckets: &'a mut Buckets<'a>, mut lexer: Lexer<'a>) -> Self {
         let mut tok = lexer.next();
 
         let mut tokens = Vec::new();
@@ -77,7 +78,33 @@ impl<'a> Parser<'a> {
     }
 
     pub fn try_parse_expr_add(&mut self) -> Result<Expr<'a>, Error<'a>> {
-        loop {}
+        use Token::*;
+        let atom = self.try_parse_expr_atom()?;
+        loop {
+            match self.peek() {
+                Plus(loc) => {
+                    self.pop();
+                    let atom = self.buckets.add(atom);
+                    let atom2 = self.try_parse_expr_atom()?;
+                    let atom2 = self.buckets.add(atom2);
+                    return Ok(Expr {
+                        tag: ExprTag::Add(atom, atom2),
+                        view: atom.view.start..atom2.view.end,
+                    });
+                }
+                Minus(loc) => {
+                    self.pop();
+                    let atom = self.buckets.add(atom);
+                    let atom2 = self.try_parse_expr_atom()?;
+                    let atom2 = self.buckets.add(atom2);
+                    return Ok(Expr {
+                        tag: ExprTag::Sub(atom, atom2),
+                        view: atom.view.start..atom2.view.end,
+                    });
+                }
+                _ => return Ok(atom),
+            }
+        }
     }
 
     pub fn try_parse_expr_atom(&mut self) -> Result<Expr<'a>, Error<'a>> {
@@ -86,7 +113,7 @@ impl<'a> Parser<'a> {
             Ident { id, location } => {
                 return Ok(Expr {
                     tag: ExprTag::Ident(id as usize),
-                    view: location..(location + self.id_list[location as usize].len() as u32),
+                    view: location..(location + self.id_list[id as usize].len() as u32),
                 })
             }
             FloatingPoint { value, begin, end } => {

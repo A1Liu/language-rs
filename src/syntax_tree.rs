@@ -6,7 +6,7 @@ pub enum ExprTag<'a> {
     Int(u64),
     Float(f64),
     Ident(usize),
-    Tup(&'a [Expr<'a>]),
+    Tup(Option<&'a [Expr<'a>]>),
     Add(&'a Expr<'a>, &'a Expr<'a>),
     Sub(&'a Expr<'a>, &'a Expr<'a>),
     Mul(&'a Expr<'a>, &'a Expr<'a>),
