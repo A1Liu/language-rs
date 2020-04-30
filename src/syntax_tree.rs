@@ -6,7 +6,7 @@ pub enum ExprTag<'a> {
     Int(u64),
     Float(f64),
     Ident(usize),
-    Tup(Option<&'a [Expr<'a>]>),
+    Tup(&'a [Expr<'a>]),
     Add(&'a Expr<'a>, &'a Expr<'a>),
     Sub(&'a Expr<'a>, &'a Expr<'a>),
     Mul(&'a Expr<'a>, &'a Expr<'a>),
@@ -20,13 +20,18 @@ pub enum ExprTag<'a> {
     Neq(&'a Expr<'a>, &'a Expr<'a>),
 }
 
-pub enum InferredType {
+#[derive(Debug)]
+pub enum InferredType<'a> {
     Unknown,
+    Int,
+    Float,
+    Tup(&'a [InferredType<'a>]),
 }
 
 #[derive(Debug)]
 pub struct Expr<'a> {
     pub tag: ExprTag<'a>,
+    pub inferred_type: InferredType<'a>,
     pub view: Range<u32>,
 }
 

@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use std::str::from_utf8_unchecked;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Token<'a> {
+pub enum Token {
     Pass(u32),
     Ident {
         id: u32,
@@ -21,10 +21,13 @@ pub enum Token<'a> {
         begin: u32,
         end: u32,
     },
-    Dedent,
-    UnknownDedent,
-    Unknown(&'a str),
-    End,
+    Dedent(u32),
+    UnknownDedent(u32),
+    Unknown {
+        begin: u32,
+        end: u32,
+    },
+    End(u32),
     Integer {
         value: u64,
         begin: u32,
@@ -35,6 +38,54 @@ pub enum Token<'a> {
         begin: u32,
         end: NonZeroU32,
     },
+}
+
+impl Token {
+    pub fn get_begin(&self) -> u32 {
+        use Token::*;
+        return match self {
+            Pass(x) => *x,
+            Ident { id, location } => *location,
+            LParen(x) => *x,
+            RParen(x) => *x,
+            Plus(x) => *x,
+            Minus(x) => *x,
+            Star(x) => *x,
+            Div(x) => *x,
+            Comma(x) => *x,
+            Newline(x) => *x,
+            Indent { begin, end } => *begin,
+            Integer { value, begin, end } => *begin,
+            FloatingPoint { value, begin, end } => *begin,
+            Dedent(x) => *x,
+            UnknownDedent(x) => *x,
+            Unknown { begin, end } => *begin,
+            End(x) => *x,
+        };
+    }
+
+    pub fn get_end(&self) -> u32 {
+        use Token::*;
+        return match self {
+            Pass(x) => *x + 4,
+            LParen(x) => *x + 1,
+            Ident { id, location } => location + 1,
+            RParen(x) => *x + 1,
+            Plus(x) => *x + 1,
+            Minus(x) => *x + 1,
+            Star(x) => *x + 1,
+            Div(x) => *x + 1,
+            Comma(x) => *x + 1,
+            Newline(x) => *x + 1,
+            Indent { begin, end } => *end,
+            Integer { value, begin, end } => end.get(),
+            FloatingPoint { value, begin, end } => end.get(),
+            Dedent(x) => *x,
+            UnknownDedent(x) => *x,
+            Unknown { begin, end } => *begin,
+            End(x) => *x,
+        };
+    }
 }
 
 #[derive(Eq, PartialEq)]
@@ -70,16 +121,16 @@ impl<'a> Lexer<'a> {
         };
     }
 
-    pub fn next(&mut self) -> Token<'a> {
+    pub fn next(&mut self) -> Token {
         return match self.state {
             LexerState::Dedent => self.next_dedent(),
             LexerState::Normal => self.next_normal(),
             LexerState::Indentation => self.next_indent(),
             LexerState::End => {
                 if self.indent_stack.len() > 1 {
-                    Token::Dedent
+                    Token::Dedent(self.index)
                 } else {
-                    Token::End
+                    Token::End(self.index)
                 }
             }
         };
@@ -94,7 +145,7 @@ impl<'a> Lexer<'a> {
         return self.data[self.index as usize];
     }
 
-    fn next_indent(&mut self) -> Token<'a> {
+    fn next_indent(&mut self) -> Token {
         let mut indent_level: u16 = 0;
         let mut begin = self.index;
         while self.index < self.data.len() as u32 {
@@ -120,7 +171,7 @@ impl<'a> Lexer<'a> {
         let prev_indent = *self.indent_stack.last().unwrap();
         if self.index == self.data.len() as u32 {
             self.state = LexerState::End;
-            return Token::End;
+            return Token::End(self.index);
         } else if indent_level < prev_indent {
             self.state = LexerState::Dedent;
             self.indent_level = indent_level;
@@ -138,14 +189,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next_dedent(&mut self) -> Token<'a> {
+    fn next_dedent(&mut self) -> Token {
         let prev_indent = *self.indent_stack.last().unwrap();
         if self.indent_level < prev_indent {
             self.indent_stack.pop();
             if self.indent_level > *self.indent_stack.last().unwrap() {
                 self.state = LexerState::Normal;
                 self.indent_stack.push(self.indent_level);
-                return Token::UnknownDedent;
+                return Token::UnknownDedent(self.index - 1);
             }
         } else if self.indent_level == prev_indent {
             self.state = LexerState::Normal;
@@ -153,10 +204,10 @@ impl<'a> Lexer<'a> {
         }
         self.state = LexerState::Normal;
         self.indent_stack.push(self.indent_level);
-        return Token::UnknownDedent;
+        return Token::UnknownDedent(self.index - 1);
     }
 
-    fn next_normal(&mut self) -> Token<'a> {
+    fn next_normal(&mut self) -> Token {
         loop {
             while self.index < self.data.len() as u32 && (self.cur() == b' ' || self.cur() == b'\t')
             {
@@ -165,7 +216,7 @@ impl<'a> Lexer<'a> {
 
             if self.index == self.data.len() as u32 {
                 self.state = LexerState::End;
-                return Token::End;
+                return Token::End(self.index);
             }
 
             let ret_val = match self.cur() {
@@ -204,7 +255,7 @@ impl<'a> Lexer<'a> {
                 b'\n' => {
                     self.index += 1;
                     if self.paren_count == 0 {
-                        return self.next_indent();
+                        return Token::Newline(self.index - 1);
                     }
                     continue;
                 }
@@ -243,7 +294,10 @@ impl<'a> Lexer<'a> {
                         break;
                     } else {
                         self.index += 1;
-                        Token::Unknown(self.substr(self.index - 1, self.index))
+                        Token::Unknown {
+                            begin: self.index - 1,
+                            end: self.index,
+                        }
                     }
                 }
             };

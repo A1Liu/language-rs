@@ -13,16 +13,19 @@ pub struct Parser<'a> {
     buckets: &'a mut Buckets<'a>,
     pub data: &'a [u8],
     pub id_list: Vec<&'a str>,
-    tokens: Vec<Token<'a>>,
+    tokens: Vec<Token>,
     index: usize,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(buckets: &'a mut Buckets<'a>, mut lexer: Lexer<'a>) -> Self {
         let mut tok = lexer.next();
-
         let mut tokens = Vec::new();
-        while tok != Token::End {
+
+        while match tok {
+            Token::End(_) => false,
+            _ => true,
+        } {
             tokens.push(tok);
             tok = lexer.next();
         }
@@ -37,11 +40,11 @@ impl<'a> Parser<'a> {
         };
     }
 
-    fn peek(&self) -> Token<'a> {
+    fn peek(&self) -> Token {
         return self.tokens[self.index];
     }
 
-    fn pop(&mut self) -> Token<'a> {
+    fn pop(&mut self) -> Token {
         let prev_index = self.index;
         self.index += 1;
         return self.tokens[prev_index];
@@ -49,7 +52,10 @@ impl<'a> Parser<'a> {
 
     pub fn try_parse_program(&mut self) -> Result<Vec<Stmt<'a>>, Error<'a>> {
         let mut stmts = Vec::new();
-        while self.peek() != Token::End {
+        while match self.peek() {
+            Token::End(_) => false,
+            _ => true,
+        } {
             stmts.push(self.try_parse_stmt()?);
         }
         return Ok(stmts);
@@ -62,19 +68,28 @@ impl<'a> Parser<'a> {
             Pass(loc) => {
                 self.pop();
                 match self.pop() {
-                    Newline(loc2) => {
+                    Newline(loc2) => return Ok(Stmt::Pass),
+                    _ => {
                         return Err(Error {
-                            location: loc..loc2,
-                            message: "pass ends a line",
+                            location: loc..(loc + 1),
+                            message: "pass needs to end in a newline",
                         })
                     }
-                    _ => return Ok(Stmt::Pass),
                 }
             }
             _ => {}
         }
 
-        return Ok(Stmt::Expr(self.try_parse_expr_atom()?));
+        let stmt = Stmt::Expr(self.try_parse_expr_atom()?);
+        match self.pop() {
+            Newline(loc2) => return Ok(stmt),
+            _ => {
+                return Err(Error {
+                    location: tok.get_begin()..self.peek().get_end(),
+                    message: "statement needs to end in a newline",
+                })
+            }
+        }
     }
 
     pub fn try_parse_expr_add(&mut self) -> Result<Expr<'a>, Error<'a>> {
@@ -89,6 +104,7 @@ impl<'a> Parser<'a> {
                     let atom2 = self.buckets.add(atom2);
                     return Ok(Expr {
                         tag: ExprTag::Add(atom, atom2),
+                        inferred_type: InferredType::Unknown,
                         view: atom.view.start..atom2.view.end,
                     });
                 }
@@ -99,6 +115,7 @@ impl<'a> Parser<'a> {
                     let atom2 = self.buckets.add(atom2);
                     return Ok(Expr {
                         tag: ExprTag::Sub(atom, atom2),
+                        inferred_type: InferredType::Unknown,
                         view: atom.view.start..atom2.view.end,
                     });
                 }
@@ -113,20 +130,79 @@ impl<'a> Parser<'a> {
             Ident { id, location } => {
                 return Ok(Expr {
                     tag: ExprTag::Ident(id as usize),
+                    inferred_type: InferredType::Unknown,
                     view: location..(location + self.id_list[id as usize].len() as u32),
                 })
             }
             FloatingPoint { value, begin, end } => {
                 return Ok(Expr {
                     tag: ExprTag::Float(value),
+                    inferred_type: InferredType::Float,
                     view: begin..end.get(),
                 })
             }
             Integer { value, begin, end } => {
                 return Ok(Expr {
                     tag: ExprTag::Int(value),
+                    inferred_type: InferredType::Int,
                     view: begin..end.get(),
                 })
+            }
+            LParen(tup_begin) => {
+                match self.peek() {
+                    RParen(tup_end) => {
+                        self.pop();
+                        return Ok(Expr {
+                            tag: ExprTag::Tup(self.buckets.add_array(Vec::new())),
+                            inferred_type: InferredType::Unknown,
+                            view: tup_begin..(tup_end + 1),
+                        });
+                    }
+                    _ => {}
+                }
+
+                let expr = self.try_parse_expr_add()?;
+                match self.peek() {
+                    RParen(tup_end) => {
+                        self.pop();
+                        return Ok(expr);
+                    }
+                    _ => {}
+                }
+
+                let mut exprs = vec![expr];
+                let mut tok = self.pop();
+                while match tok {
+                    Comma(_) => true,
+                    _ => false,
+                } {
+                    if match self.peek() {
+                        RParen(_) => true,
+                        _ => false,
+                    } {
+                        tok = self.pop();
+                        break;
+                    }
+
+                    exprs.push(self.try_parse_expr_add()?);
+                    tok = self.pop();
+                }
+
+                let end = match tok {
+                    RParen(end) => end + 1,
+                    _ => {
+                        return Err(Error {
+                            location: tok.get_begin()..tok.get_end(),
+                            message: "expected ')' character",
+                        })
+                    }
+                };
+
+                return Ok(Expr {
+                    tag: ExprTag::Tup(self.buckets.add_array(exprs)),
+                    inferred_type: InferredType::Unknown,
+                    view: tup_begin..end,
+                });
             }
             _ => panic!(),
         }
