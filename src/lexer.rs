@@ -1,48 +1,25 @@
 use std::collections::HashMap;
 use std::str::from_utf8_unchecked;
 
-#[derive(Debug)]
-enum Token<'a> {
-    Pass(&'a str),
-    Else(&'a str),
-    Ident(usize),
-    Lparen(&'a str),
-    RParen(&'a str),
-    LBracket(&'a str),
-    RBracket(&'a str),
-    NotEqual(&'a str),
-    Equals(&'a str),
-    EqualsEquals(&'a str),
-    LessThan(&'a str),
-    GreaterThan(&'a str),
-    LessEq(&'a str),
-    GreaterEq(&'a str),
-    Arrow(&'a str),
-    Dot(&'a str),
-    Plus(&'a str),
-    Minus(&'a str),
-    Star(&'a str),
-    StarStar(&'a str),
-    Div(&'a str),
-    DivDiv(&'a str),
-    Percent(&'a str),
-    Colon(&'a str),
-    Comma(&'a str),
-    None(&'a str),
-    Newline(&'a str),
-    Indent(&'a str),
+#[derive(Debug, PartialEq)]
+pub enum Token<'a> {
+    Pass(usize),
+    Ident { id: usize, location: usize },
+    LParen(usize),
+    RParen(usize),
+    Plus(usize),
+    Minus(usize),
+    Star(usize),
+    Div(usize),
+    Comma(usize),
+    Newline(usize),
+    Indent { begin: usize, end: usize },
     Dedent,
     UnknownDedent,
     Unknown(&'a str),
     End,
     Integer(i64),
     FloatingPoint(f64),
-    String(&'a str),
-    TripleDash(&'a str),
-    IntType(&'a str),
-    FloatType(&'a str),
-    StrType(&'a str),
-    BoolType(&'a str),
 }
 
 #[derive(Eq, PartialEq)]
@@ -53,14 +30,14 @@ enum LexerState {
     End,
 }
 
-struct Lexer<'a> {
+pub struct Lexer<'a> {
     data: &'a [u8],
     id_map: HashMap<&'a str, usize>,
     id_list: Vec<&'a str>,
     indent_stack: Vec<u16>,
     index: usize,
     indent_level: u16,
-    parentheses_count: u8,
+    paren_count: u8,
     state: LexerState,
 }
 
@@ -73,7 +50,7 @@ impl<'a> Lexer<'a> {
             indent_stack: vec![0],
             index: 0,
             indent_level: 0,
-            parentheses_count: 0,
+            paren_count: 0,
             state: LexerState::Indentation,
         };
     }
@@ -97,17 +74,16 @@ impl<'a> Lexer<'a> {
         return unsafe { from_utf8_unchecked(&self.data[start..end]) };
     }
 
+    #[inline]
+    fn cur(&self) -> u8 {
+        return self.data[self.index];
+    }
+
     fn next_indent(&mut self) -> Token<'a> {
         let mut indent_level: u16 = 0;
         let mut begin = self.index;
         while self.index < self.data.len() {
-            match self.data[self.index] {
-                b'\\' => {
-                    self.index += 1;
-                    if self.data[self.index] != b'\n' {
-                        return Token::Unknown(self.substr(self.index - 2, self.index));
-                    }
-                }
+            match self.cur() {
                 b'\n' => {
                     indent_level = 0;
                     begin = self.index;
@@ -127,10 +103,9 @@ impl<'a> Lexer<'a> {
         }
 
         let prev_indent = *self.indent_stack.last().unwrap();
-        let end = self.index;
         if self.index == self.data.len() {
             self.state = LexerState::End;
-            return self.next();
+            return Token::End;
         } else if indent_level < prev_indent {
             self.state = LexerState::Dedent;
             self.indent_level = indent_level;
@@ -141,7 +116,10 @@ impl<'a> Lexer<'a> {
         } else {
             self.state = LexerState::Normal;
             self.indent_stack.push(indent_level);
-            return Token::Indent(self.substr(begin, end));
+            return Token::Indent {
+                begin,
+                end: self.index,
+            };
         }
     }
 
@@ -164,6 +142,114 @@ impl<'a> Lexer<'a> {
     }
 
     fn next_normal(&mut self) -> Token<'a> {
-        return Token::End;
+        loop {
+            while self.index < self.data.len() && (self.cur() == b' ' || self.cur() == b'\t') {
+                self.index += 1;
+            }
+
+            if self.index == self.data.len() {
+                self.state = LexerState::End;
+                return Token::End;
+            }
+
+            let ret_val = match self.data[self.index] {
+                b'(' => {
+                    self.index += 1;
+                    self.paren_count += 1;
+                    Token::LParen(self.index - 1)
+                }
+                b')' => {
+                    self.index += 1;
+                    if self.paren_count != 0 {
+                        self.paren_count -= 1;
+                    }
+                    Token::RParen(self.index - 1)
+                }
+                b'+' => {
+                    self.index += 1;
+                    Token::Plus(self.index - 1)
+                }
+                b'-' => {
+                    self.index += 1;
+                    Token::Minus(self.index - 1)
+                }
+                b'/' => {
+                    self.index += 1;
+                    Token::Div(self.index - 1)
+                }
+                b'*' => {
+                    self.index += 1;
+                    Token::Star(self.index - 1)
+                }
+                b',' => {
+                    self.index += 1;
+                    Token::Comma(self.index - 1)
+                }
+                b'\n' => {
+                    self.index += 1;
+                    if self.paren_count == 0 {
+                        return self.next_indent();
+                    }
+                    continue;
+                }
+                b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9' => {
+                    let begin = self.index;
+                    while self.index < self.data.len() && self.cur() <= b'9' && self.cur() >= b'0' {
+                        self.index += 1;
+                    }
+
+                    if self.cur() == b'.' {
+                        self.index += 1;
+                        while self.index < self.data.len()
+                            && self.cur() <= b'9'
+                            && self.cur() >= b'0'
+                        {
+                            self.index += 1;
+                        }
+                        Token::FloatingPoint(self.substr(begin, self.index).parse().unwrap())
+                    } else {
+                        Token::Integer(self.substr(begin, self.index).parse().unwrap())
+                    }
+                }
+                c => {
+                    if (c as char).is_alphabetic() {
+                        break;
+                    } else {
+                        self.index += 1;
+                        Token::Unknown(self.substr(self.index - 1, self.index))
+                    }
+                }
+            };
+
+            if self.index == self.data.len() {
+                self.state = LexerState::End;
+            }
+            return ret_val;
+        }
+
+        let begin = self.index;
+        while self.index < self.data.len() && (self.data[self.index] as char).is_alphanumeric() {
+            self.index += 1;
+        }
+
+        let id_string = self.substr(begin, self.index);
+
+        return match id_string {
+            "pass" => Token::Pass(begin),
+            x => {
+                let id = if self.id_map.contains_key(x) {
+                    self.id_map[x]
+                } else {
+                    let id = self.id_list.len();
+                    self.id_map.insert(x, id);
+                    id
+                };
+
+                Token::Ident {
+                    id,
+                    location: begin,
+                }
+            }
+        };
     }
 }

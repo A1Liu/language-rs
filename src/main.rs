@@ -4,6 +4,18 @@
 mod lexer;
 mod util;
 
+use lexer::*;
+
 fn main() {
-    println!("Hello, world!");
+    let mut l = Lexer::new("(hey, 12.2 + 12)");
+
+    let mut tok = l.next();
+
+    let mut tokens = Vec::new();
+    while tok != Token::End {
+        tokens.push(tok);
+        tok = l.next();
+    }
+
+    println!("{:?}", tokens);
 }
