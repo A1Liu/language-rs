@@ -92,10 +92,11 @@ where
                     let atom = self.buckets.add(atom);
                     let atom2 = self.try_parse_unary_postfix()?;
                     let atom2 = self.buckets.add(atom2);
+                    let (start, end) = (atom.view.start, atom2.view.end);
                     return Ok(Expr {
                         tag: ExprTag::Add(atom, atom2),
                         inferred_type: InferredType::Unknown,
-                        view: atom.view.start..atom2.view.end,
+                        view: start..end,
                     });
                 }
                 Minus(loc) => {
@@ -103,10 +104,11 @@ where
                     let atom = self.buckets.add(atom);
                     let atom2 = self.try_parse_unary_postfix()?;
                     let atom2 = self.buckets.add(atom2);
+                    let (start, end) = (atom.view.start, atom2.view.end);
                     return Ok(Expr {
                         tag: ExprTag::Sub(atom, atom2),
                         inferred_type: InferredType::Unknown,
-                        view: atom.view.start..atom2.view.end,
+                        view: start..end,
                     });
                 }
                 _ => return Ok(atom),
@@ -128,23 +130,24 @@ where
                     view,
                 } = arguments
                 {
+                    let (start, end) = (callee.view.start, callee.view.end);
                     expr = Expr {
                         tag: ExprTag::Call {
                             callee,
                             arguments: slice,
                         },
                         inferred_type: InferredType::Unknown,
-                        view: callee.view.start..view.end,
+                        view: start..end,
                     };
                 } else {
-                    let end = arguments.view.end;
+                    let (start, end) = (callee.view.start, arguments.view.end);
                     expr = Expr {
                         tag: ExprTag::Call {
                             callee,
                             arguments: self.buckets.add_array(vec![arguments]),
                         },
                         inferred_type: InferredType::Unknown,
-                        view: callee.view.start..end,
+                        view: start..end,
                     };
                 }
             } else if let Token::Dot(begin) = self.peek() {
@@ -152,6 +155,7 @@ where
                 match self.pop() {
                     Token::Ident { id, location } => {
                         let parent = self.buckets.add(expr);
+                        let start = parent.view.start;
 
                         expr = Expr {
                             tag: ExprTag::DotAccess {
@@ -159,8 +163,7 @@ where
                                 member_id: id,
                             },
                             inferred_type: InferredType::Unknown,
-                            view: parent.view.start
-                                ..(location + self.lexer.id_list[id as usize].len() as u32),
+                            view: start..(location + self.lexer.id_list[id as usize].len() as u32),
                         }
                     }
                     x => {
@@ -205,7 +208,7 @@ where
             }
             LParen(tup_begin) => {
                 let tup = self.try_parse_expr_tup()?;
-                let slice = match tup.tag {
+                let slice = match &tup.tag {
                     ExprTag::Tup(slice) => slice,
                     _ => panic!(),
                 };

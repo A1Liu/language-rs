@@ -41,6 +41,7 @@ fn main() {
     if let Ok(program) = parse_result {
         let mut program = buckets.add_array(program);
         let mut t = TypeChecker::new(&mut buckets);
-        println!("{:?}", t.check_program(&mut program));
+        println!("{:?}", t.check_program(program));
+        println!("{:?}", program);
     }
 }

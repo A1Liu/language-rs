@@ -1,39 +1,52 @@
+use std::collections::HashMap;
 use std::ops::Range;
 
 #[derive(Debug)]
 pub enum ExprTag<'a> {
-    None,
     Int(u64),
     Float(f64),
     Ident(u32),
-    Tup(&'a [Expr<'a>]),
+    Tup(&'a mut [Expr<'a>]),
     Call {
-        callee: &'a Expr<'a>,
-        arguments: &'a [Expr<'a>],
+        callee: &'a mut Expr<'a>,
+        arguments: &'a mut [Expr<'a>],
     },
     DotAccess {
-        parent: &'a Expr<'a>,
+        parent: &'a mut Expr<'a>,
         member_id: u32,
     },
-    Add(&'a Expr<'a>, &'a Expr<'a>),
-    Sub(&'a Expr<'a>, &'a Expr<'a>),
-    Mul(&'a Expr<'a>, &'a Expr<'a>),
-    Div(&'a Expr<'a>, &'a Expr<'a>),
-    Mod(&'a Expr<'a>, &'a Expr<'a>),
-    Leq(&'a Expr<'a>, &'a Expr<'a>),
-    Geq(&'a Expr<'a>, &'a Expr<'a>),
-    Lt(&'a Expr<'a>, &'a Expr<'a>),
-    Gt(&'a Expr<'a>, &'a Expr<'a>),
-    Eq(&'a Expr<'a>, &'a Expr<'a>),
-    Neq(&'a Expr<'a>, &'a Expr<'a>),
+    Add(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Sub(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Mul(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Div(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Mod(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Leq(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Geq(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Lt(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Gt(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Eq(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Neq(&'a mut Expr<'a>, &'a mut Expr<'a>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InferredType<'a> {
     Unknown,
     Int,
     Float,
-    Tup(&'a [InferredType<'a>]),
+    Function {
+        return_type: &'a InferredType<'a>,
+        arguments: &'a [InferredType<'a>],
+    },
+    Class(&'a HashMap<u32, InferredType<'a>>), // This will leak the buffer that the hashmap stores its data in
+}
+
+impl<'a> InferredType<'a> {
+    pub fn is_primitive(&self) -> bool {
+        return match self {
+            InferredType::Int | InferredType::Float => true,
+            _ => false,
+        };
+    }
 }
 
 #[derive(Debug)]

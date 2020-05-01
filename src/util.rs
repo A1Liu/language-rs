@@ -1,4 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ops::Range;
@@ -6,6 +7,23 @@ use std::ptr;
 use std::slice::from_raw_parts_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
+
+pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
+    let names = vec![
+        "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "print",
+    ];
+    let mut names_map = HashMap::new();
+    for (idx, name) in names.iter().enumerate() {
+        names_map.insert(*name, idx as u32);
+    }
+
+    return (names, names_map);
+}
+
+#[inline]
+pub fn tuple_component(idx: u32) -> u32 {
+    return idx;
+}
 
 #[derive(Debug)]
 pub struct Error<'a> {

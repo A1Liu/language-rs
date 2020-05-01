@@ -1,3 +1,4 @@
+use crate::util::*;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::str::from_utf8_unchecked;
@@ -101,8 +102,8 @@ enum LexerState {
 
 pub struct Lexer<'a> {
     pub data: &'a [u8],
-    pub id_map: HashMap<&'a str, u32>,
     pub id_list: Vec<&'a str>,
+    pub id_map: HashMap<&'a str, u32>,
     indent_stack: Vec<u16>,
     index: u32,
     indent_level: u16,
@@ -112,10 +113,11 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(data: &'a str) -> Self {
+        let (id_list, id_map) = builtin_names();
         return Lexer {
             data: data.as_bytes(),
-            id_map: HashMap::new(),
-            id_list: Vec::new(),
+            id_list,
+            id_map,
             indent_stack: vec![0],
             index: 0,
             indent_level: 0,
