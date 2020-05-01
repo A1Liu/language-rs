@@ -17,8 +17,8 @@ where
     'b: 'a,
 {
     pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
-        let type_table = HashMap::new();
-        let symbol_table = HashMap::new();
+        let type_table = builtin_types(buckets);
+        let symbol_table = builtin_symbols(buckets);
         return Self {
             buckets,
             type_table,
@@ -48,10 +48,33 @@ where
                 type_name,
                 value,
             } => {
-                return Err(Error {
-                    location: *name_loc..value.view.end,
-                    message: "no declarations yet",
-                })
+                let end = value.view.end;
+                if self.symbol_table.contains_key(name) {
+                    return Err(Error {
+                        location: *name_loc..end,
+                        message: "can't shadow variables in current scope",
+                    });
+                }
+
+                let declared_type;
+                if let Some(decl_type) = self.search_type_table(*type_name) {
+                    declared_type = decl_type;
+                } else {
+                    return Err(Error {
+                        location: *name_loc..end,
+                        message: "type doesn't exist",
+                    });
+                }
+
+                if Self::is_assignment_compatible(declared_type, self.check_expr(value)?) {
+                    self.symbol_table.insert(*name, declared_type);
+                    return Ok(());
+                } else {
+                    return Err(Error {
+                        location: *name_loc..end,
+                        message: "type doesn't match value type",
+                    });
+                }
             }
             Stmt::Assign { to, value } => {
                 return Err(Error {
@@ -128,9 +151,20 @@ where
                 let callee_type = self.check_expr(callee)?;
                 if let &InferredType::Function {
                     return_type,
-                    arguments,
+                    arguments: args_formal,
                 } = callee_type
                 {
+                    for (formal, arg) in args_formal.iter().zip(arguments.iter_mut()) {
+                        let (start, end) = (arg.view.start, arg.view.end);
+                        let arg_type = self.check_expr(arg)?;
+                        if !Self::is_assignment_compatible(formal, arg_type) {
+                            return Err(Error {
+                                location: start..end,
+                                message: "argument is wrong type",
+                            });
+                        }
+                    }
+
                     expr.inferred_type = *return_type;
                     return Ok(&expr.inferred_type);
                 } else {
@@ -157,7 +191,35 @@ where
         }
     }
 
-    fn search_symbol_table<'c>(&'c self, id: u32) -> Option<&'c InferredType<'b>> {
+    fn is_assignment_compatible(to: &InferredType<'b>, value: &InferredType<'b>) -> bool {
+        return match to {
+            InferredType::Unknown => panic!(),
+            InferredType::Float => *value == InferredType::Float || *value == InferredType::Int,
+            InferredType::Any => true,
+            x => x == value,
+        };
+    }
+
+    fn search_type_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
+        let mut type_table = &self.type_table;
+        let mut parent = self.parent;
+        loop {
+            if type_table.contains_key(&id) {
+                return Some(type_table[&id]);
+            }
+
+            if let Some(p) = parent {
+                type_table = &p.type_table;
+                parent = p.parent;
+            } else {
+                break;
+            }
+        }
+
+        return None;
+    }
+
+    fn search_symbol_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
         let mut symbol_table = &self.symbol_table;
         let mut parent = self.parent;
         loop {

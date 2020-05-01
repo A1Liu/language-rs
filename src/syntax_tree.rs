@@ -31,6 +31,8 @@ pub enum ExprTag<'a> {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InferredType<'a> {
     Unknown,
+    None,
+    Any,
     Int,
     Float,
     Function {
@@ -60,15 +62,15 @@ pub struct Expr<'a> {
 pub enum Stmt<'a> {
     End,
     Pass,
-    Expr(Expr<'a>),
+    Expr(&'a mut Expr<'a>),
     Declare {
         name: u32,
         name_loc: u32,
         type_name: u32,
-        value: Expr<'a>,
+        value: &'a mut Expr<'a>,
     },
     Assign {
-        to: Expr<'a>,
-        value: Expr<'a>,
+        to: &'a mut Expr<'a>,
+        value: &'a mut Expr<'a>,
     },
 }

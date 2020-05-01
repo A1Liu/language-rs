@@ -263,6 +263,14 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     Token::Comma(self.index - 1)
                 }
+                b'=' => {
+                    self.index += 1;
+                    Token::Equal(self.index - 1)
+                }
+                b':' => {
+                    self.index += 1;
+                    Token::Colon(self.index - 1)
+                }
                 b'.' => {
                     self.index += 1;
                     Token::Dot(self.index - 1)
@@ -308,6 +316,10 @@ impl<'a> Lexer<'a> {
                     if (c as char).is_alphabetic() {
                         break;
                     } else {
+                        println!(
+                            "Warning: unknown character '{}' at location: {}",
+                            c as char, self.index
+                        );
                         self.index += 1;
                         Token::Unknown {
                             begin: self.index - 1,

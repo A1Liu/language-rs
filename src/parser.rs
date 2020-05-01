@@ -16,7 +16,8 @@ impl<'a, 'b> Parser<'a, 'b>
 where
     'b: 'a,
 {
-    pub fn new(buckets: &'a mut Buckets<'b>, mut lexer: Lexer<'a>) -> Self {
+    pub fn new(buckets: &'a mut Buckets<'b>, data: &'a str) -> Self {
+        let mut lexer = Lexer::new(data);
         let token = lexer.next();
 
         return Parser {
@@ -67,12 +68,13 @@ where
         }
 
         let expr = self.try_parse_expr()?;
+        let expr = self.buckets.add(expr);
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
             Colon(loc2) => {}
             _ => {
                 return Err(Error {
-                    location: tok.get_begin()..self.peek().get_end(),
+                    location: expr.view.start..expr.view.end,
                     message: "statement needs to end in a newline",
                 })
             }
@@ -113,12 +115,13 @@ where
         let expr = self.try_parse_expr()?;
         match self.pop() {
             Newline(_) => {
+                let expr = self.buckets.add(expr);
                 return Ok(Stmt::Declare {
                     name: ident,
                     name_loc: ident_loc,
                     type_name: type_ident,
                     value: expr,
-                })
+                });
             }
             _ => {
                 return Err(Error {
@@ -135,34 +138,34 @@ where
 
     pub fn try_parse_expr_add(&mut self) -> Result<Expr<'b>, Error<'b>> {
         use Token::*;
-        let atom = self.try_parse_unary_postfix()?;
+        let mut expr = self.try_parse_unary_postfix()?;
         loop {
             match self.peek() {
                 Plus(loc) => {
                     self.pop();
-                    let atom = self.buckets.add(atom);
-                    let atom2 = self.try_parse_unary_postfix()?;
-                    let atom2 = self.buckets.add(atom2);
-                    let (start, end) = (atom.view.start, atom2.view.end);
-                    return Ok(Expr {
-                        tag: ExprTag::Add(atom, atom2),
+                    let op = self.buckets.add(expr);
+                    let op2 = self.try_parse_unary_postfix()?;
+                    let op2 = self.buckets.add(op2);
+                    let (start, end) = (op.view.start, op2.view.end);
+                    expr = Expr {
+                        tag: ExprTag::Add(op, op2),
                         inferred_type: InferredType::Unknown,
                         view: start..end,
-                    });
+                    };
                 }
                 Minus(loc) => {
                     self.pop();
-                    let atom = self.buckets.add(atom);
-                    let atom2 = self.try_parse_unary_postfix()?;
-                    let atom2 = self.buckets.add(atom2);
-                    let (start, end) = (atom.view.start, atom2.view.end);
-                    return Ok(Expr {
-                        tag: ExprTag::Sub(atom, atom2),
+                    let op = self.buckets.add(expr);
+                    let op2 = self.try_parse_unary_postfix()?;
+                    let op2 = self.buckets.add(op2);
+                    let (start, end) = (op.view.start, op2.view.end);
+                    expr = Expr {
+                        tag: ExprTag::Sub(op, op2),
                         inferred_type: InferredType::Unknown,
                         view: start..end,
-                    });
+                    };
                 }
-                _ => return Ok(atom),
+                _ => return Ok(expr),
             }
         }
     }
@@ -173,7 +176,6 @@ where
         loop {
             if let Token::LParen(begin) = self.peek() {
                 let callee = self.buckets.add(expr);
-                println!("{:?}", callee);
                 let arguments = self.try_parse_expr_tup()?;
                 if let Expr {
                     tag: ExprTag::Tup(slice),

@@ -1,3 +1,4 @@
+use crate::syntax_tree::InferredType;
 use std::alloc::{alloc, dealloc, Layout};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -10,7 +11,7 @@ const BUCKET_SIZE: usize = 1024 * 1024;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     let names = vec![
-        "print", "float", "int", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
+        "print", "float", "int", "None", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
     ];
     let mut names_map = HashMap::new();
     for (idx, name) in names.iter().enumerate() {
@@ -20,9 +21,29 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     return (names, names_map);
 }
 
+pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
+    let mut map = HashMap::new();
+    let none_type = &*buckets.add(InferredType::None);
+    let print_args = &*buckets.add_array(vec![InferredType::Any]);
+    let inferred_type = &*buckets.add(InferredType::Function {
+        return_type: none_type,
+        arguments: print_args,
+    });
+    map.insert(0, inferred_type);
+    map.insert(3, none_type);
+    return map;
+}
+
+pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
+    let mut map = HashMap::new();
+    map.insert(1, &*buckets.add(InferredType::Float));
+    map.insert(2, &*buckets.add(InferredType::Int));
+    return map;
+}
+
 #[inline]
 pub fn tuple_component(idx: u32) -> u32 {
-    return idx + 3;
+    return idx + 4;
 }
 
 #[derive(Debug)]

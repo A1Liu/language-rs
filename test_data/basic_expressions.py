@@ -1,7 +1,6 @@
-12
-13
-hi((12, 32, 3)).hello
-hey
+hi: float = 12
+hey: float = 21.2
+print(12.1)
 (
     12,
     0,
