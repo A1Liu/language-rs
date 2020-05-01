@@ -61,5 +61,14 @@ pub enum Stmt<'a> {
     End,
     Pass,
     Expr(Expr<'a>),
-    Assign { to: Expr<'a>, value: Expr<'a> },
+    Declare {
+        name: u32,
+        name_loc: u32,
+        type_name: u32,
+        value: Expr<'a>,
+    },
+    Assign {
+        to: Expr<'a>,
+        value: Expr<'a>,
+    },
 }

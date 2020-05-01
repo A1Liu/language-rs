@@ -69,6 +69,57 @@ where
         let expr = self.try_parse_expr()?;
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
+            Colon(loc2) => {}
+            _ => {
+                return Err(Error {
+                    location: tok.get_begin()..self.peek().get_end(),
+                    message: "statement needs to end in a newline",
+                })
+            }
+        }
+
+        let (ident, ident_loc);
+        if let ExprTag::Ident(id) = expr.tag {
+            ident = id;
+            ident_loc = expr.view.start;
+        } else {
+            return Err(Error {
+                location: expr.view.start..expr.view.end,
+                message: "left hand of declaration must be identifier",
+            });
+        }
+
+        let type_ident;
+        let tok = self.pop();
+        if let Ident { id, location } = tok {
+            type_ident = id;
+        } else {
+            return Err(Error {
+                location: tok.get_begin()..tok.get_end(),
+                message: "type needs to be identifier",
+            });
+        }
+
+        match self.pop() {
+            Equal(_) => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "expected equal sign after variable declaration",
+                })
+            }
+        }
+
+        let expr = self.try_parse_expr()?;
+        match self.pop() {
+            Newline(_) => {
+                return Ok(Stmt::Declare {
+                    name: ident,
+                    name_loc: ident_loc,
+                    type_name: type_ident,
+                    value: expr,
+                })
+            }
             _ => {
                 return Err(Error {
                     location: tok.get_begin()..self.peek().get_end(),

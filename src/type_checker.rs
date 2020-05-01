@@ -42,6 +42,17 @@ where
                 self.check_expr(expr)?;
                 return Ok(());
             }
+            Stmt::Declare {
+                name,
+                name_loc,
+                type_name,
+                value,
+            } => {
+                return Err(Error {
+                    location: *name_loc..value.view.end,
+                    message: "no declarations yet",
+                })
+            }
             Stmt::Assign { to, value } => {
                 return Err(Error {
                     location: to.view.start..value.view.end,

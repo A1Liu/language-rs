@@ -10,7 +10,7 @@ const BUCKET_SIZE: usize = 1024 * 1024;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     let names = vec![
-        "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "print",
+        "print", "float", "int", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
     ];
     let mut names_map = HashMap::new();
     for (idx, name) in names.iter().enumerate() {
@@ -22,7 +22,7 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
 
 #[inline]
 pub fn tuple_component(idx: u32) -> u32 {
-    return idx;
+    return idx + 3;
 }
 
 #[derive(Debug)]
