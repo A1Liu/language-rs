@@ -6,6 +6,7 @@ use std::fs::read_to_string;
 
 mod lexer;
 mod parser;
+mod runtime;
 mod syntax_tree;
 mod type_checker;
 mod util;
@@ -13,8 +14,6 @@ mod util;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use parser::*;
-use type_checker::*;
 
 fn run_on_file(file: &str) {
     let input = read_to_string(file).unwrap();
@@ -22,7 +21,7 @@ fn run_on_file(file: &str) {
     let mut buckets = util::Buckets::new();
     let mut files = SimpleFiles::new();
 
-    let mut parser = Parser::new(&mut buckets, &input);
+    let mut parser = parser::Parser::new(&mut buckets, &input);
     let file_id = files.add(file, &input);
     let parse_result = parser.try_parse_program();
 
@@ -45,7 +44,7 @@ fn run_on_file(file: &str) {
         }
     };
 
-    let mut t = TypeChecker::new(&mut buckets);
+    let mut t = type_checker::TypeChecker::new(&mut buckets);
     match t.check_program(program) {
         Ok(()) => println!("success!"),
         Err(e) => {
@@ -64,6 +63,8 @@ fn run_on_file(file: &str) {
             return;
         }
     }
+
+    let rscope = runtime::RuntimeScope::new();
 }
 
 fn main() {
