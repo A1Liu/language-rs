@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "language-rs"
+name = "lars"
 version = "0.1.0"
 dependencies = [
  "codespan-reporting",

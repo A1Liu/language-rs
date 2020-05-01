@@ -272,7 +272,12 @@ where
                     return Ok(tup);
                 }
             }
-            _ => panic!(),
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token while parsing expression",
+                });
+            }
         }
     }
 

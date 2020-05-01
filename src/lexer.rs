@@ -164,6 +164,7 @@ impl<'a> Lexer<'a> {
                 b'\n' => {
                     indent_level = 0;
                     begin = self.index;
+                    self.index += 1;
                 }
                 b' ' => {
                     indent_level += 1;
@@ -278,6 +279,7 @@ impl<'a> Lexer<'a> {
                 b'\n' => {
                     self.index += 1;
                     if self.paren_count == 0 {
+                        self.state = LexerState::Indentation;
                         return Token::Newline(self.index - 1);
                     }
                     continue;
