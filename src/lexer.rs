@@ -17,6 +17,7 @@ pub enum Token {
     Div(u32),
     Comma(u32),
     Newline(u32),
+    Dot(u32),
     Indent {
         begin: u32,
         end: u32,
@@ -52,6 +53,7 @@ impl Token {
             Minus(x) => *x,
             Star(x) => *x,
             Div(x) => *x,
+            Dot(x) => *x,
             Comma(x) => *x,
             Newline(x) => *x,
             Indent { begin, end } => *begin,
@@ -75,6 +77,7 @@ impl Token {
             Minus(x) => *x + 1,
             Star(x) => *x + 1,
             Div(x) => *x + 1,
+            Dot(x) => *x + 1,
             Comma(x) => *x + 1,
             Newline(x) => *x + 1,
             Indent { begin, end } => *end,
@@ -251,6 +254,10 @@ impl<'a> Lexer<'a> {
                 b',' => {
                     self.index += 1;
                     Token::Comma(self.index - 1)
+                }
+                b'.' => {
+                    self.index += 1;
+                    Token::Dot(self.index - 1)
                 }
                 b'\n' => {
                     self.index += 1;

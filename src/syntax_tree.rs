@@ -5,8 +5,16 @@ pub enum ExprTag<'a> {
     None,
     Int(u64),
     Float(f64),
-    Ident(usize),
+    Ident(u32),
     Tup(&'a [Expr<'a>]),
+    Call {
+        callee: &'a Expr<'a>,
+        arguments: &'a [Expr<'a>],
+    },
+    DotAccess {
+        parent: &'a Expr<'a>,
+        member_id: u32,
+    },
     Add(&'a Expr<'a>, &'a Expr<'a>),
     Sub(&'a Expr<'a>, &'a Expr<'a>),
     Mul(&'a Expr<'a>, &'a Expr<'a>),
@@ -20,7 +28,7 @@ pub enum ExprTag<'a> {
     Neq(&'a Expr<'a>, &'a Expr<'a>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum InferredType<'a> {
     Unknown,
     Int,

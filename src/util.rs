@@ -1,9 +1,17 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::marker::PhantomData;
 use std::mem::size_of;
+use std::ops::Range;
+use std::ptr;
 use std::slice::from_raw_parts_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
+
+#[derive(Debug)]
+pub struct Error<'a> {
+    pub location: Range<u32>,
+    pub message: &'a str,
+}
 
 #[derive(Clone, Copy)]
 pub struct Bucket {
@@ -65,7 +73,11 @@ impl<'a> Buckets<'a> {
     }
 
     pub fn add<T>(&mut self, t: T) -> &'a mut T {
-        return unsafe { &mut *(self.new_unsafe(size_of::<T>()) as *mut T) };
+        unsafe {
+            let location = self.new_unsafe(size_of::<T>()) as *mut T;
+            ptr::write(location, t);
+            return &mut *location;
+        };
     }
 
     pub fn add_array<T>(&mut self, values: Vec<T>) -> &'a mut [T] {

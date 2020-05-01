@@ -7,10 +7,12 @@ use std::fs::read_to_string;
 mod lexer;
 mod parser;
 mod syntax_tree;
+mod type_checker;
 mod util;
 
 use lexer::*;
 use parser::*;
+use type_checker::*;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -32,6 +34,13 @@ fn main() {
     println!("{:?}", tokens);
 
     let mut p = Parser::new(&mut buckets, l);
+    let parse_result = p.try_parse_program();
 
-    println!("{:?}", p.try_parse_program());
+    println!("{:?}", parse_result);
+
+    if let Ok(program) = parse_result {
+        let mut program = buckets.add_array(program);
+        let mut t = TypeChecker::new(&mut buckets);
+        println!("{:?}", t.check_program(&mut program));
+    }
 }
