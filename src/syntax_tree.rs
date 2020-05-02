@@ -5,7 +5,10 @@ use std::ops::Range;
 pub enum ExprTag<'a> {
     Int(u64),
     Float(f64),
-    Ident(u32),
+    Ident {
+        id: u32,
+        scope_origin: u32,
+    },
     Tup(&'a mut [Expr<'a>]),
     Call {
         callee: &'a mut Expr<'a>,
@@ -16,16 +19,6 @@ pub enum ExprTag<'a> {
         member_id: u32,
     },
     Add(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Sub(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Mul(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Div(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Mod(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Leq(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Geq(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Lt(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Gt(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Eq(&'a mut Expr<'a>, &'a mut Expr<'a>),
-    Neq(&'a mut Expr<'a>, &'a mut Expr<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -78,11 +71,13 @@ pub enum Stmt<'a> {
     Function {
         name: u32,
         name_loc: u32,
+        scope_id: u32,
         arguments: &'a mut [FuncParam],
         stmts: &'a mut [Stmt<'a>],
     },
     Assign {
         to: u32,
+        to_scope: u32,
         to_loc: u32,
         value: &'a mut Expr<'a>,
     },

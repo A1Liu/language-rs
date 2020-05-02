@@ -7,6 +7,8 @@ pub struct Parser<'a, 'b>
 where
     'b: 'a,
 {
+    next_scope_id: u32,
+    current_scope: u32,
     buckets: &'a mut Buckets<'b>,
     pub lexer: Lexer<'a>,
     token: Token,
@@ -23,6 +25,8 @@ where
         let token2 = lexer.next();
 
         return Parser {
+            next_scope_id: 1,
+            current_scope: 0,
             buckets,
             lexer,
             token,
@@ -127,7 +131,7 @@ where
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
             Equal(_) => match &mut expr.tag {
-                ExprTag::Ident(id) => {
+                ExprTag::Ident { id, scope_origin } => {
                     let value = self.try_parse_expr()?;
                     let value = self.buckets.add(value);
                     match self.pop() {
@@ -141,6 +145,7 @@ where
                     }
                     return Ok(Stmt::Assign {
                         to: *id,
+                        to_scope: *scope_origin,
                         to_loc: expr.view.start,
                         value,
                     });
@@ -150,7 +155,7 @@ where
                     let value = self.buckets.add(value);
                     return Ok(Stmt::AssignMember {
                         to: *parent,
-                        to_member: *member_id,
+                        to_member: 0,
                         value,
                     });
                 }
@@ -171,6 +176,10 @@ where
     }
 
     pub fn try_parse_func(&mut self) -> Result<Stmt<'b>, Error<'b>> {
+        let prev_scope = self.current_scope;
+        self.current_scope = self.next_scope_id;
+        self.next_scope_id += 1;
+
         match self.pop() {
             Token::Def(_) => {}
             _ => panic!(),
@@ -184,20 +193,22 @@ where
                 def_loc = location;
             }
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function arguments",
-                })
+                });
             }
         }
 
         match self.pop() {
             Token::LParen(_) => {}
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function arguments",
-                })
+                });
             }
         }
 
@@ -212,20 +223,22 @@ where
                     arg_name = id;
                 }
                 x => {
+                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.get_begin()..x.get_end(),
                         message: "unexpected token when parsing function arguments",
-                    })
+                    });
                 }
             }
 
             match self.pop() {
                 Token::Colon(_) => {}
                 x => {
+                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.get_begin()..x.get_end(),
                         message: "unexpected token when parsing function arguments",
-                    })
+                    });
                 }
             }
 
@@ -253,10 +266,11 @@ where
                 }
                 Token::Comma(_) => {}
                 x => {
+                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.get_begin()..x.get_end(),
                         message: "unexpected token when parsing function arguments",
-                    })
+                    });
                 }
             }
         }
@@ -266,26 +280,29 @@ where
         match self.pop() {
             Token::Colon(_) => {}
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function signature",
-                })
+                });
             }
         }
 
         match self.pop() {
             Token::Newline(_) => {}
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function signature",
-                })
+                });
             }
         }
 
         match self.pop() {
             Token::Indent { begin, end } => {}
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function signature",
@@ -306,6 +323,7 @@ where
         match self.pop() {
             Token::Dedent(_) => {}
             x => {
+                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.get_begin()..x.get_end(),
                     message: "unexpected token when parsing function dedent",
@@ -313,12 +331,15 @@ where
             }
         }
 
-        return Ok(Stmt::Function {
+        let function = Stmt::Function {
             name: def_name,
             name_loc: def_loc,
+            scope_id: self.current_scope,
             arguments,
             stmts,
-        });
+        };
+        self.current_scope = prev_scope;
+        return Ok(function);
     }
 
     pub fn try_parse_expr(&mut self) -> Result<Expr<'b>, Error<'b>> {
@@ -338,18 +359,6 @@ where
                     let (start, end) = (op.view.start, op2.view.end);
                     expr = Expr {
                         tag: ExprTag::Add(op, op2),
-                        inferred_type: InferredType::Unknown,
-                        view: start..end,
-                    };
-                }
-                Minus(loc) => {
-                    self.pop();
-                    let op = self.buckets.add(expr);
-                    let op2 = self.try_parse_unary_postfix()?;
-                    let op2 = self.buckets.add(op2);
-                    let (start, end) = (op.view.start, op2.view.end);
-                    expr = Expr {
-                        tag: ExprTag::Sub(op, op2),
                         inferred_type: InferredType::Unknown,
                         view: start..end,
                     };
@@ -427,7 +436,10 @@ where
             Ident { id, location } => {
                 self.pop();
                 return Ok(Expr {
-                    tag: ExprTag::Ident(id),
+                    tag: ExprTag::Ident {
+                        id,
+                        scope_origin: 0,
+                    },
                     inferred_type: InferredType::Unknown,
                     view: location..(location + self.lexer.id_list[id as usize].len() as u32),
                 });

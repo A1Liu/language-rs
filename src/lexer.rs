@@ -13,9 +13,6 @@ pub enum Token {
     LParen(u32),
     RParen(u32),
     Plus(u32),
-    Minus(u32),
-    Star(u32),
-    Div(u32),
     Comma(u32),
     Newline(u32),
     Colon(u32),
@@ -54,9 +51,6 @@ impl Token {
             LParen(x) => *x,
             RParen(x) => *x,
             Plus(x) => *x,
-            Minus(x) => *x,
-            Star(x) => *x,
-            Div(x) => *x,
             Dot(x) => *x,
             Def(x) => *x,
             Comma(x) => *x,
@@ -81,9 +75,6 @@ impl Token {
             Ident { id, location } => location + 1,
             RParen(x) => *x + 1,
             Plus(x) => *x + 1,
-            Minus(x) => *x + 1,
-            Star(x) => *x + 1,
-            Div(x) => *x + 1,
             Dot(x) => *x + 1,
             Def(x) => *x + 3,
             Equal(x) => *x + 1,
@@ -252,18 +243,6 @@ impl<'a> Lexer<'a> {
                 b'+' => {
                     self.index += 1;
                     Token::Plus(self.index - 1)
-                }
-                b'-' => {
-                    self.index += 1;
-                    Token::Minus(self.index - 1)
-                }
-                b'/' => {
-                    self.index += 1;
-                    Token::Div(self.index - 1)
-                }
-                b'*' => {
-                    self.index += 1;
-                    Token::Star(self.index - 1)
                 }
                 b',' => {
                     self.index += 1;

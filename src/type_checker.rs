@@ -2,15 +2,24 @@ use crate::builtins::*;
 use crate::syntax_tree::*;
 use crate::util::*;
 use std::collections::HashMap;
+use std::marker::PhantomData;
+
+pub struct SymbolTable<'a, 'b>
+where
+    'b: 'a,
+{
+    pub scope_id: u32,
+    pub symbols: HashMap<u32, &'b InferredType<'b>>,
+    phantom: PhantomData<&'a u8>,
+}
 
 pub struct TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
-    scope_id: u32,
     buckets: &'a mut Buckets<'b>,
-    type_tables: Vec<HashMap<u32, &'b InferredType<'b>>>,
-    symbol_tables: Vec<HashMap<u32, &'b InferredType<'b>>>,
+    type_tables: Vec<SymbolTable<'a, 'b>>,
+    symbol_tables: Vec<SymbolTable<'a, 'b>>,
 }
 
 impl<'a, 'b> TypeChecker<'a, 'b>
@@ -21,14 +30,22 @@ where
         let type_table = builtin_types(buckets);
         let symbol_table = builtin_symbols(buckets);
         return Self {
-            scope_id: 0,
             buckets,
-            type_tables: vec![type_table],
-            symbol_tables: vec![symbol_table],
+            type_tables: vec![SymbolTable {
+                scope_id: 0,
+                symbols: type_table,
+                phantom: PhantomData,
+            }],
+            symbol_tables: vec![SymbolTable {
+                scope_id: 0,
+                symbols: symbol_table,
+                phantom: PhantomData,
+            }],
         };
     }
 
     pub fn check_program<'c>(&mut self, program: &'c mut [Stmt<'b>]) -> Result<(), Error<'b>> {
+        // TODO add functions to symbol table
         for stmt in program {
             self.check_stmt(stmt)?;
         }
@@ -77,7 +94,12 @@ where
                     });
                 }
             }
-            Stmt::Assign { to, to_loc, value } => {
+            Stmt::Assign {
+                to,
+                to_scope,
+                to_loc,
+                value,
+            } => {
                 let var_type = self.search_symbol_table(*to);
                 let var_type = match var_type {
                     Some(t) => t,
@@ -89,7 +111,8 @@ where
                     }
                 };
 
-                if Self::is_assignment_compatible(var_type, self.check_expr(value)?) {
+                if Self::is_assignment_compatible(var_type.1, self.check_expr(value)?) {
+                    *to_scope = var_type.0;
                     return Ok(());
                 }
 
@@ -111,6 +134,7 @@ where
             Stmt::Function {
                 name,
                 name_loc,
+                scope_id,
                 arguments,
                 stmts,
             } => {
@@ -131,12 +155,16 @@ where
                 }
 
                 let function_type = InferredType::Function {
-                    return_type: self.search_symbol_table(NONE_IDX).unwrap(),
+                    return_type: self.search_symbol_table(NONE_IDX).unwrap().1,
                     arguments: self.buckets.add_array(arg_types),
                 };
                 let function_type = self.buckets.add(function_type);
                 self.symbol_scope_add(*name, function_type);
-                self.symbol_tables.push(symbols);
+                self.symbol_tables.push(SymbolTable {
+                    scope_id: *scope_id,
+                    symbols,
+                    phantom: PhantomData,
+                });
                 self.check_program(stmts)?;
                 self.symbol_tables.pop();
 
@@ -155,10 +183,11 @@ where
         }
 
         match &mut expr.tag {
-            Ident(x) => {
-                let sym_entry = self.search_symbol_table(*x);
+            Ident { id, scope_origin } => {
+                let sym_entry = self.search_symbol_table(*id);
                 if let Some(sym_type) = sym_entry {
-                    expr.inferred_type = *sym_type;
+                    expr.inferred_type = *sym_type.1;
+                    *scope_origin = sym_type.0;
                     return Ok(&expr.inferred_type);
                 } else {
                     return Err(Error {
@@ -262,18 +291,18 @@ where
 
     fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b InferredType<'b>) {
         let sym = self.symbol_tables.last_mut().unwrap();
-        sym.insert(id, symbol_type);
+        sym.symbols.insert(id, symbol_type);
     }
 
     fn symbol_scope_contains(&self, id: u32) -> bool {
         let sym = self.symbol_tables.last().unwrap();
-        return sym.contains_key(&id);
+        return sym.symbols.contains_key(&id);
     }
 
     fn search_symbol_scope(&self, id: u32) -> Option<&'b InferredType<'b>> {
         let sym = self.symbol_tables.last().unwrap();
-        if sym.contains_key(&id) {
-            return Some(sym[&id]);
+        if sym.symbols.contains_key(&id) {
+            return Some(sym.symbols[&id]);
         } else {
             return None;
         }
@@ -281,17 +310,17 @@ where
 
     fn search_type_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
         for type_table in self.type_tables.iter().rev() {
-            if type_table.contains_key(&id) {
-                return Some(type_table[&id]);
+            if type_table.symbols.contains_key(&id) {
+                return Some(type_table.symbols[&id]);
             }
         }
         return None;
     }
 
-    fn search_symbol_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
+    fn search_symbol_table(&self, id: u32) -> Option<(u32, &'b InferredType<'b>)> {
         for symbol_table in self.symbol_tables.iter().rev() {
-            if symbol_table.contains_key(&id) {
-                return Some(symbol_table[&id]);
+            if symbol_table.symbols.contains_key(&id) {
+                return Some((symbol_table.scope_id, symbol_table.symbols[&id]));
             }
         }
         return None;

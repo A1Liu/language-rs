@@ -61,10 +61,12 @@ fn run_on_string<'b>(
         }
     }
 
-    let mut rscope = runtime::RuntimeScope::new();
-    for stmt in program {
-        rscope.run_stmt(stmt);
-    }
+    println!("{:?}", program);
+
+    // let mut rscope = runtime::RuntimeScope::new();
+    // for stmt in program {
+    //     rscope.run_stmt(stmt);
+    // }
     return Ok(());
 }
 

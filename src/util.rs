@@ -75,7 +75,12 @@ impl<'a> Buckets<'a> {
     }
 
     pub unsafe fn new_unsafe(&mut self, size: usize) -> *mut u8 {
-        let size = (size - 1) / 16 * 16 + 16;
+        // @Correctness panics in debug mode without this check
+        let size = if size != 0 {
+            (size - 1) / 16 * 16 + 16
+        } else {
+            size
+        };
         if size > BUCKET_SIZE {
             let bucket = self.buckets.last().unwrap().clone();
             let begin = alloc(Layout::from_size_align_unchecked(size, 8));
