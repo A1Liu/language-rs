@@ -10,6 +10,7 @@ where
     buckets: &'a mut Buckets<'b>,
     pub lexer: Lexer<'a>,
     token: Token,
+    token2: Token,
 }
 
 impl<'a, 'b> Parser<'a, 'b>
@@ -19,11 +20,13 @@ where
     pub fn new(buckets: &'a mut Buckets<'b>, data: &'a str) -> Self {
         let mut lexer = Lexer::new(data);
         let token = lexer.next();
+        let token2 = lexer.next();
 
         return Parser {
             buckets,
             lexer,
             token,
+            token2,
         };
     }
 
@@ -31,9 +34,14 @@ where
         return self.token;
     }
 
+    fn peek2(&self) -> Token {
+        return self.token2;
+    }
+
     fn pop(&mut self) -> Token {
         let prev_token = self.token;
-        self.token = self.lexer.next();
+        self.token = self.token2;
+        self.token2 = self.lexer.next();
         return prev_token;
     }
 
@@ -67,65 +75,94 @@ where
             _ => {}
         }
 
+        if let Ident { id, location } = self.peek() {
+            if let Colon(cloc) = self.peek2() {
+                self.pop();
+                self.pop();
+                let type_ident;
+                let tok = self.pop();
+                if let Ident { id, location } = tok {
+                    type_ident = id;
+                } else {
+                    return Err(Error {
+                        location: tok.get_begin()..tok.get_end(),
+                        message: "type needs to be identifier",
+                    });
+                }
+
+                match self.pop() {
+                    Equal(_) => {}
+                    x => {
+                        return Err(Error {
+                            location: x.get_begin()..x.get_end(),
+                            message: "expected equal sign after variable declaration",
+                        })
+                    }
+                }
+
+                let expr = self.try_parse_expr()?;
+                match self.pop() {
+                    Newline(_) => {
+                        let expr = self.buckets.add(expr);
+                        return Ok(Stmt::Declare {
+                            name: id,
+                            name_loc: location,
+                            type_name: type_ident,
+                            value: expr,
+                        });
+                    }
+                    _ => {
+                        return Err(Error {
+                            location: tok.get_begin()..self.peek().get_end(),
+                            message: "statement needs to end in a newline",
+                        })
+                    }
+                }
+            }
+        }
+
         let expr = self.try_parse_expr()?;
         let expr = self.buckets.add(expr);
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
-            Colon(loc2) => {}
-            _ => {
-                return Err(Error {
-                    location: expr.view.start..expr.view.end,
-                    message: "statement needs to end in a newline",
-                })
-            }
-        }
-
-        let (ident, ident_loc);
-        if let ExprTag::Ident(id) = expr.tag {
-            ident = id;
-            ident_loc = expr.view.start;
-        } else {
-            return Err(Error {
-                location: expr.view.start..expr.view.end,
-                message: "left hand of declaration must be identifier",
-            });
-        }
-
-        let type_ident;
-        let tok = self.pop();
-        if let Ident { id, location } = tok {
-            type_ident = id;
-        } else {
-            return Err(Error {
-                location: tok.get_begin()..tok.get_end(),
-                message: "type needs to be identifier",
-            });
-        }
-
-        match self.pop() {
-            Equal(_) => {}
+            Equal(_) => match &mut expr.tag {
+                ExprTag::Ident(id) => {
+                    let value = self.try_parse_expr()?;
+                    let value = self.buckets.add(value);
+                    match self.pop() {
+                        Newline(_) => {}
+                        x => {
+                            return Err(Error {
+                                location: expr.view.start..x.get_end(),
+                                message: "statement needs to end in a newline",
+                            })
+                        }
+                    }
+                    return Ok(Stmt::Assign {
+                        to: *id,
+                        to_loc: expr.view.start,
+                        value,
+                    });
+                }
+                ExprTag::DotAccess { parent, member_id } => {
+                    let value = self.try_parse_expr()?;
+                    let value = self.buckets.add(value);
+                    return Ok(Stmt::AssignMember {
+                        to: *parent,
+                        to_member: *member_id,
+                        value,
+                    });
+                }
+                x => {
+                    return Err(Error {
+                        location: expr.view.start..expr.view.end,
+                        message: "assignment can only happen to member accessors or names",
+                    })
+                }
+            },
             x => {
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
-                    message: "expected equal sign after variable declaration",
-                })
-            }
-        }
-
-        let expr = self.try_parse_expr()?;
-        match self.pop() {
-            Newline(_) => {
-                let expr = self.buckets.add(expr);
-                return Ok(Stmt::Declare {
-                    name: ident,
-                    name_loc: ident_loc,
-                    type_name: type_ident,
-                    value: expr,
-                });
-            }
-            _ => {
-                return Err(Error {
-                    location: tok.get_begin()..self.peek().get_end(),
+                    location: expr.view.start..x.get_end(),
                     message: "statement needs to end in a newline",
                 })
             }

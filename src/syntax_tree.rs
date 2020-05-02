@@ -74,4 +74,9 @@ pub enum Stmt<'a> {
         to_loc: u32,
         value: &'a mut Expr<'a>,
     },
+    AssignMember {
+        to: &'a mut Expr<'a>,
+        to_member: u32,
+        value: &'a mut Expr<'a>,
+    },
 }

@@ -21,6 +21,7 @@ pub enum Token {
     Colon(u32),
     Dot(u32),
     Equal(u32),
+    Def(u32),
     Indent {
         begin: u32,
         end: u32,
@@ -57,6 +58,7 @@ impl Token {
             Star(x) => *x,
             Div(x) => *x,
             Dot(x) => *x,
+            Def(x) => *x,
             Comma(x) => *x,
             Colon(x) => *x,
             Equal(x) => *x,
@@ -83,6 +85,7 @@ impl Token {
             Star(x) => *x + 1,
             Div(x) => *x + 1,
             Dot(x) => *x + 1,
+            Def(x) => *x + 3,
             Equal(x) => *x + 1,
             Comma(x) => *x + 1,
             Colon(x) => *x + 1,

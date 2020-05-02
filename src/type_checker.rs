@@ -7,6 +7,8 @@ pub struct TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
+    file_id: u32,
+    scope_id: u32,
     buckets: &'a mut Buckets<'b>,
     type_table: HashMap<u32, &'b InferredType<'b>>,
     symbol_table: HashMap<u32, &'b InferredType<'b>>,
@@ -17,10 +19,12 @@ impl<'a, 'b> TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
-    pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
+    pub fn new(buckets: &'a mut Buckets<'b>, file_id: u32) -> Self {
         let type_table = builtin_types(buckets);
         let symbol_table = builtin_symbols(buckets);
         return Self {
+            file_id,
+            scope_id: 0,
             buckets,
             type_table,
             symbol_table,
@@ -78,8 +82,33 @@ where
                 }
             }
             Stmt::Assign { to, to_loc, value } => {
+                let var_type = self.search_symbol_table(*to);
+                let var_type = match var_type {
+                    Some(t) => t,
+                    None => {
+                        return Err(Error {
+                            location: *to_loc..value.view.start,
+                            message: "variable not found",
+                        })
+                    }
+                };
+
+                if Self::is_assignment_compatible(var_type, self.check_expr(value)?) {
+                    return Ok(());
+                }
+
                 return Err(Error {
                     location: *to_loc..value.view.end,
+                    message: "not assignment compatible",
+                });
+            }
+            Stmt::AssignMember {
+                to,
+                to_member,
+                value,
+            } => {
+                return Err(Error {
+                    location: to.view.start..value.view.end,
                     message: "no assignments yet",
                 })
             }

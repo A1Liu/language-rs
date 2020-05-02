@@ -65,13 +65,7 @@ impl<'a> RuntimeScope<'a> {
             Float(value) => value.to_bits(),
             Call { callee, arguments } => {
                 if let ExprTag::Ident(PRINT_IDX) = callee.tag {
-                    let bytes = self.eval_expr(&arguments[0]);
-                    if let InferredType::Int = arguments[0].inferred_type {
-                        println!("{}", bytes as i64);
-                    } else if let InferredType::Float = arguments[0].inferred_type {
-                        println!("{}", f64::from_bits(bytes));
-                    }
-                    0
+                    self.eval_print_function(arguments)
                 } else {
                     panic!();
                 }
@@ -101,5 +95,15 @@ impl<'a> RuntimeScope<'a> {
             }
             _ => panic!(),
         };
+    }
+
+    fn eval_print_function(&mut self, args: &[Expr]) -> u64 {
+        let bytes = self.eval_expr(&args[0]);
+        if let InferredType::Int = args[0].inferred_type {
+            println!("{}", bytes as i64);
+        } else if let InferredType::Float = args[0].inferred_type {
+            println!("{}", f64::from_bits(bytes));
+        }
+        0
     }
 }

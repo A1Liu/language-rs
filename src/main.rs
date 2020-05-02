@@ -18,55 +18,46 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
-fn run_on_file(filename: &str) {
-    let input = read_to_string(filename).unwrap();
-    run_on_string(filename, &input);
+fn run_on_file<'a, 'b>(
+    buckets: &mut util::Buckets<'b>,
+    files: &mut SimpleFiles<&'a str, &'b str>,
+    filename: &'a str,
+) -> Result<(), Diagnostic<usize>> {
+    let input = buckets.add_str(&read_to_string(filename).unwrap());
+    let file_id = files.add(filename, input);
+    return run_on_string(buckets, file_id, &input);
 }
 
-fn run_on_string(filename: &str, input: &str) {
-    let mut buckets = util::Buckets::new();
-    let mut files = SimpleFiles::new();
-
-    let mut parser = parser::Parser::new(&mut buckets, input);
-    let file_id = files.add(filename, input);
+fn run_on_string<'b>(
+    buckets: &mut util::Buckets<'b>,
+    file_id: usize,
+    input: &str,
+) -> Result<(), Diagnostic<usize>> {
+    let mut parser = parser::Parser::new(buckets, input);
     let parse_result = parser.try_parse_program();
 
     let program = match parse_result {
         Ok(p) => buckets.add_array(p),
         Err(e) => {
-            let diagnostic = Diagnostic::error()
+            return Err(Diagnostic::error()
                 .with_message(e.message)
                 .with_labels(vec![Label::primary(
                     file_id,
                     (e.location.start as usize)..(e.location.end as usize),
-                )]);
-
-            let writer = StandardStream::stderr(ColorChoice::Always);
-            let config = codespan_reporting::term::Config::default();
-
-            codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
-                .expect("why did this fail?");
-            return;
+                )]));
         }
     };
 
-    let mut t = type_checker::TypeChecker::new(&mut buckets);
+    let mut t = type_checker::TypeChecker::new(buckets, file_id as u32);
     match t.check_program(program) {
         Ok(()) => {}
         Err(e) => {
-            let diagnostic = Diagnostic::error()
+            return Err(Diagnostic::error()
                 .with_message(e.message)
                 .with_labels(vec![Label::primary(
                     file_id,
                     (e.location.start as usize)..(e.location.end as usize),
-                )]);
-
-            let writer = StandardStream::stderr(ColorChoice::Always);
-            let config = codespan_reporting::term::Config::default();
-
-            codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
-                .expect("why did this fail?");
-            return;
+                )]));
         }
     }
 
@@ -74,11 +65,23 @@ fn run_on_string(filename: &str, input: &str) {
     for stmt in program {
         rscope.run_stmt(stmt);
     }
+    return Ok(());
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
     for arg in args.iter().skip(1) {
-        run_on_file(arg);
+        let mut buckets = util::Buckets::new();
+        let mut files = SimpleFiles::new();
+        match run_on_file(&mut buckets, &mut files, arg) {
+            Err(diagnostic) => {
+                codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+                    .expect("why did this fail?")
+            }
+            _ => {}
+        }
     }
 }

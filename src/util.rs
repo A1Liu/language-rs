@@ -4,6 +4,7 @@ use std::mem::size_of;
 use std::ops::Range;
 use std::ptr;
 use std::slice::from_raw_parts_mut;
+use std::str::from_utf8_unchecked_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
@@ -78,6 +79,21 @@ impl<'a> Buckets<'a> {
             ptr::write(location, t);
             return &mut *location;
         };
+    }
+
+    pub fn add_str(&mut self, values: &str) -> &'a mut str {
+        let values = values.as_bytes();
+        let len = values.len();
+        let begin = unsafe { self.new_unsafe(values.len()) };
+        let mut location = begin;
+        for value in values {
+            unsafe {
+                *location = *value;
+                location = location.add(1);
+            }
+        }
+
+        return unsafe { from_utf8_unchecked_mut(from_raw_parts_mut(begin, len)) };
     }
 
     pub fn add_array<T>(&mut self, values: Vec<T>) -> &'a mut [T] {
