@@ -1,3 +1,4 @@
+use crate::builtins::*;
 use crate::syntax_tree::*;
 use crate::util::*;
 use std::collections::HashMap;
@@ -76,9 +77,9 @@ where
                     });
                 }
             }
-            Stmt::Assign { to, value } => {
+            Stmt::Assign { to, to_loc, value } => {
                 return Err(Error {
-                    location: to.view.start..value.view.end,
+                    location: *to_loc..value.view.end,
                     message: "no assignments yet",
                 })
             }

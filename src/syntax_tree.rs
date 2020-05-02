@@ -70,7 +70,8 @@ pub enum Stmt<'a> {
         value: &'a mut Expr<'a>,
     },
     Assign {
-        to: &'a mut Expr<'a>,
+        to: u32,
+        to_loc: u32,
         value: &'a mut Expr<'a>,
     },
 }

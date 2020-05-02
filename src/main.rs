@@ -6,6 +6,7 @@ use std::fs::read_to_string;
 
 extern crate codespan_reporting;
 
+mod builtins;
 mod lexer;
 mod parser;
 mod runtime;

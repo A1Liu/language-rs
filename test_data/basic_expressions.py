@@ -1,2 +1,6 @@
-print(12.1 + 12)
-print(12 + 12.3)
+hello: int = 12 + 13
+goodbye: float = 12.3
+
+print(hello)
+print(goodbye)
+print(hello + goodbye)

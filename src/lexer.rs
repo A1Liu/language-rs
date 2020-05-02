@@ -1,4 +1,4 @@
-use crate::util::*;
+use crate::builtins::builtin_names;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::str::from_utf8_unchecked;
