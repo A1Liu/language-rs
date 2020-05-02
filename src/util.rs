@@ -9,6 +9,11 @@ use std::slice::from_raw_parts_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
+pub const PRINT_IDX: u32 = 0;
+pub const FLOAT_IDX: u32 = 1;
+pub const INT_IDX: u32 = 2;
+pub const NONE_IDX: u32 = 3;
+
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     let names = vec![
         "print", "float", "int", "None", "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
@@ -24,20 +29,21 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
 pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
     let mut map = HashMap::new();
     let none_type = &*buckets.add(InferredType::None);
-    let print_args = &*buckets.add_array(vec![InferredType::Any]);
-    let inferred_type = &*buckets.add(InferredType::Function {
+    let any_arg = &*buckets.add_array(vec![InferredType::Any]);
+    let print_type = &*buckets.add(InferredType::Function {
         return_type: none_type,
-        arguments: print_args,
+        arguments: any_arg,
     });
-    map.insert(0, inferred_type);
-    map.insert(3, none_type);
+
+    map.insert(PRINT_IDX, print_type);
+    map.insert(NONE_IDX, none_type);
     return map;
 }
 
 pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
     let mut map = HashMap::new();
-    map.insert(1, &*buckets.add(InferredType::Float));
-    map.insert(2, &*buckets.add(InferredType::Int));
+    map.insert(FLOAT_IDX, &*buckets.add(InferredType::Float));
+    map.insert(INT_IDX, &*buckets.add(InferredType::Int));
     return map;
 }
 
