@@ -213,6 +213,8 @@ impl<'a> Lexer<'a> {
                 self.indent_stack.push(self.indent_level);
                 return Token::UnknownDedent(self.index - 1);
             }
+
+            return Token::Dedent(self.index - 1);
         } else if self.indent_level == prev_indent {
             self.state = LexerState::Normal;
             return self.next();
@@ -347,6 +349,7 @@ impl<'a> Lexer<'a> {
 
         return match self.substr(begin, self.index) {
             "pass" => Token::Pass(begin),
+            "def" => Token::Def(begin),
             x => {
                 let id = if self.id_map.contains_key(x) {
                     self.id_map[x]

@@ -72,6 +72,7 @@ where
                     }
                 }
             }
+            Def(loc) => return self.try_parse_func(),
             _ => {}
         }
 
@@ -167,6 +168,157 @@ where
                 })
             }
         }
+    }
+
+    pub fn try_parse_func(&mut self) -> Result<Stmt<'b>, Error<'b>> {
+        match self.pop() {
+            Token::Def(_) => {}
+            _ => panic!(),
+        }
+
+        let def_name;
+        let def_loc;
+        match self.pop() {
+            Token::Ident { id, location } => {
+                def_name = id;
+                def_loc = location;
+            }
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function arguments",
+                })
+            }
+        }
+
+        match self.pop() {
+            Token::LParen(_) => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function arguments",
+                })
+            }
+        }
+
+        let mut args = Vec::new();
+        loop {
+            let arg_name;
+            match self.pop() {
+                Token::RParen(_) => {
+                    break;
+                }
+                Token::Ident { id, location } => {
+                    arg_name = id;
+                }
+                x => {
+                    return Err(Error {
+                        location: x.get_begin()..x.get_end(),
+                        message: "unexpected token when parsing function arguments",
+                    })
+                }
+            }
+
+            match self.pop() {
+                Token::Colon(_) => {}
+                x => {
+                    return Err(Error {
+                        location: x.get_begin()..x.get_end(),
+                        message: "unexpected token when parsing function arguments",
+                    })
+                }
+            }
+
+            let type_name;
+            match self.pop() {
+                Token::Ident { id, location } => {
+                    type_name = id;
+                }
+                x => {
+                    return Err(Error {
+                        location: x.get_begin()..x.get_end(),
+                        message: "unexpected token when parsing function arguments",
+                    })
+                }
+            }
+
+            args.push(FuncParam {
+                name: arg_name,
+                type_name,
+            });
+
+            match self.pop() {
+                Token::RParen(_) => {
+                    break;
+                }
+                Token::Comma(_) => {}
+                x => {
+                    return Err(Error {
+                        location: x.get_begin()..x.get_end(),
+                        message: "unexpected token when parsing function arguments",
+                    })
+                }
+            }
+        }
+
+        let arguments = self.buckets.add_array(args);
+
+        match self.pop() {
+            Token::Colon(_) => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function signature",
+                })
+            }
+        }
+
+        match self.pop() {
+            Token::Newline(_) => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function signature",
+                })
+            }
+        }
+
+        match self.pop() {
+            Token::Indent { begin, end } => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function signature",
+                });
+            }
+        }
+
+        let mut stmts = Vec::new();
+        while match self.peek() {
+            Token::Dedent(_) => false,
+            _ => true,
+        } {
+            stmts.push(self.try_parse_stmt()?);
+        }
+
+        let stmts = self.buckets.add_array(stmts);
+
+        match self.pop() {
+            Token::Dedent(_) => {}
+            x => {
+                return Err(Error {
+                    location: x.get_begin()..x.get_end(),
+                    message: "unexpected token when parsing function dedent",
+                });
+            }
+        }
+
+        return Ok(Stmt::Function {
+            name: def_name,
+            name_loc: def_loc,
+            arguments,
+            stmts,
+        });
     }
 
     pub fn try_parse_expr(&mut self) -> Result<Expr<'b>, Error<'b>> {

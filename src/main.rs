@@ -48,7 +48,7 @@ fn run_on_string<'b>(
         }
     };
 
-    let mut t = type_checker::TypeChecker::new(buckets, file_id as u32);
+    let mut t = type_checker::TypeChecker::new(buckets);
     match t.check_program(program) {
         Ok(()) => {}
         Err(e) => {
@@ -73,6 +73,7 @@ fn main() {
 
     let writer = StandardStream::stderr(ColorChoice::Always);
     let config = codespan_reporting::term::Config::default();
+
     for arg in args.iter().skip(1) {
         let mut buckets = util::Buckets::new();
         let mut files = SimpleFiles::new();

@@ -53,6 +53,7 @@ impl<'a> RuntimeScope<'a> {
                 let value = self.eval_expr(value);
                 self.values.insert(*name, value);
             }
+
             _ => panic!(),
         }
     }

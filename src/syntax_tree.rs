@@ -59,6 +59,12 @@ pub struct Expr<'a> {
 }
 
 #[derive(Debug)]
+pub struct FuncParam {
+    pub name: u32,
+    pub type_name: u32,
+}
+
+#[derive(Debug)]
 pub enum Stmt<'a> {
     End,
     Pass,
@@ -68,6 +74,12 @@ pub enum Stmt<'a> {
         name_loc: u32,
         type_name: u32,
         value: &'a mut Expr<'a>,
+    },
+    Function {
+        name: u32,
+        name_loc: u32,
+        arguments: &'a mut [FuncParam],
+        stmts: &'a mut [Stmt<'a>],
     },
     Assign {
         to: u32,

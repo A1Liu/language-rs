@@ -7,28 +7,24 @@ pub struct TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
-    file_id: u32,
     scope_id: u32,
     buckets: &'a mut Buckets<'b>,
-    type_table: HashMap<u32, &'b InferredType<'b>>,
-    symbol_table: HashMap<u32, &'b InferredType<'b>>,
-    parent: Option<&'a TypeChecker<'a, 'b>>,
+    type_tables: Vec<HashMap<u32, &'b InferredType<'b>>>,
+    symbol_tables: Vec<HashMap<u32, &'b InferredType<'b>>>,
 }
 
 impl<'a, 'b> TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
-    pub fn new(buckets: &'a mut Buckets<'b>, file_id: u32) -> Self {
+    pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
         let type_table = builtin_types(buckets);
         let symbol_table = builtin_symbols(buckets);
         return Self {
-            file_id,
             scope_id: 0,
             buckets,
-            type_table,
-            symbol_table,
-            parent: None,
+            type_tables: vec![type_table],
+            symbol_tables: vec![symbol_table],
         };
     }
 
@@ -54,7 +50,7 @@ where
                 value,
             } => {
                 let end = value.view.end;
-                if self.symbol_table.contains_key(name) {
+                if self.symbol_scope_contains(*name) {
                     return Err(Error {
                         location: *name_loc..end,
                         message: "can't shadow variables in current scope",
@@ -72,7 +68,7 @@ where
                 }
 
                 if Self::is_assignment_compatible(declared_type, self.check_expr(value)?) {
-                    self.symbol_table.insert(*name, declared_type);
+                    self.symbol_scope_add(*name, declared_type);
                     return Ok(());
                 } else {
                     return Err(Error {
@@ -109,8 +105,42 @@ where
             } => {
                 return Err(Error {
                     location: to.view.start..value.view.end,
-                    message: "no assignments yet",
+                    message: "no member assignments yet",
                 })
+            }
+            Stmt::Function {
+                name,
+                name_loc,
+                arguments,
+                stmts,
+            } => {
+                if self.symbol_scope_contains(*name) {
+                    return Err(Error {
+                        location: *name_loc..(*name_loc + 1),
+                        message: "can't shadow variables in current scope",
+                    });
+                }
+
+                let mut symbols = HashMap::new();
+                let mut arg_types = Vec::new();
+                for arg in arguments.iter() {
+                    if let Some(t) = self.search_type_table(arg.type_name) {
+                        arg_types.push(*t);
+                        symbols.insert(arg.name, t);
+                    }
+                }
+
+                let function_type = InferredType::Function {
+                    return_type: self.search_symbol_table(NONE_IDX).unwrap(),
+                    arguments: self.buckets.add_array(arg_types),
+                };
+                let function_type = self.buckets.add(function_type);
+                self.symbol_scope_add(*name, function_type);
+                self.symbol_tables.push(symbols);
+                self.check_program(stmts)?;
+                self.symbol_tables.pop();
+
+                return Ok(());
             }
         }
     }
@@ -230,41 +260,40 @@ where
         };
     }
 
+    fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b InferredType<'b>) {
+        let sym = self.symbol_tables.last_mut().unwrap();
+        sym.insert(id, symbol_type);
+    }
+
+    fn symbol_scope_contains(&self, id: u32) -> bool {
+        let sym = self.symbol_tables.last().unwrap();
+        return sym.contains_key(&id);
+    }
+
+    fn search_symbol_scope(&self, id: u32) -> Option<&'b InferredType<'b>> {
+        let sym = self.symbol_tables.last().unwrap();
+        if sym.contains_key(&id) {
+            return Some(sym[&id]);
+        } else {
+            return None;
+        }
+    }
+
     fn search_type_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
-        let mut type_table = &self.type_table;
-        let mut parent = self.parent;
-        loop {
+        for type_table in self.type_tables.iter().rev() {
             if type_table.contains_key(&id) {
                 return Some(type_table[&id]);
             }
-
-            if let Some(p) = parent {
-                type_table = &p.type_table;
-                parent = p.parent;
-            } else {
-                break;
-            }
         }
-
         return None;
     }
 
     fn search_symbol_table(&self, id: u32) -> Option<&'b InferredType<'b>> {
-        let mut symbol_table = &self.symbol_table;
-        let mut parent = self.parent;
-        loop {
+        for symbol_table in self.symbol_tables.iter().rev() {
             if symbol_table.contains_key(&id) {
                 return Some(symbol_table[&id]);
             }
-
-            if let Some(p) = parent {
-                symbol_table = &p.symbol_table;
-                parent = p.parent;
-            } else {
-                break;
-            }
         }
-
         return None;
     }
 }

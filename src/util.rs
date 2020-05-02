@@ -20,6 +20,33 @@ pub struct Bucket {
     end: *mut u8,
 }
 
+// taken from https://github.com/llogiq/partition
+pub fn partition<T, P>(data: &mut [T], predicate: P) -> &mut [T]
+where
+    P: Fn(&T) -> bool,
+{
+    let len = data.len();
+    if len == 0 {
+        return data;
+    }
+
+    let (mut l, mut r) = (0, len - 1);
+    loop {
+        while l < len && predicate(&data[l]) {
+            l += 1;
+        }
+
+        while r > 0 && !predicate(&data[r]) {
+            r -= 1;
+        }
+
+        if l >= r {
+            return data;
+        }
+        data.swap(l, r);
+    }
+}
+
 pub struct Buckets<'a> {
     pub buckets: Vec<Bucket>,
     unused: PhantomData<&'a u8>,
@@ -103,7 +130,7 @@ impl<'a> Buckets<'a> {
         let mut location = begin;
         for value in values {
             unsafe {
-                *location = value;
+                ptr::write(location, value);
                 location = location.add(1);
             }
         }
