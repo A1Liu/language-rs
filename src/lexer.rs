@@ -1,4 +1,5 @@
 use crate::builtins::builtin_names;
+use crate::util::{newr, CRange};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::str::from_utf8_unchecked;
@@ -8,7 +9,7 @@ pub enum Token {
     Pass(u32),
     Ident {
         id: u32,
-        location: u32,
+        view: CRange,
     },
     LParen(u32),
     RParen(u32),
@@ -43,51 +44,27 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn get_begin(&self) -> u32 {
+    pub fn view(self) -> CRange {
         use Token::*;
         return match self {
-            Pass(x) => *x,
-            Ident { id, location } => *location,
-            LParen(x) => *x,
-            RParen(x) => *x,
-            Plus(x) => *x,
-            Dot(x) => *x,
-            Def(x) => *x,
-            Comma(x) => *x,
-            Colon(x) => *x,
-            Equal(x) => *x,
-            Newline(x) => *x,
-            Indent { begin, end } => *begin,
-            Integer { value, begin, end } => *begin,
-            FloatingPoint { value, begin, end } => *begin,
-            Dedent(x) => *x,
-            UnknownDedent(x) => *x,
-            Unknown { begin, end } => *begin,
-            End(x) => *x,
-        };
-    }
-
-    pub fn get_end(&self) -> u32 {
-        use Token::*;
-        return match self {
-            Pass(x) => *x + 4,
-            LParen(x) => *x + 1,
-            Ident { id, location } => location + 1,
-            RParen(x) => *x + 1,
-            Plus(x) => *x + 1,
-            Dot(x) => *x + 1,
-            Def(x) => *x + 3,
-            Equal(x) => *x + 1,
-            Comma(x) => *x + 1,
-            Colon(x) => *x + 1,
-            Newline(x) => *x + 1,
-            Indent { begin, end } => *end,
-            Integer { value, begin, end } => end.get(),
-            FloatingPoint { value, begin, end } => end.get(),
-            Dedent(x) => *x,
-            UnknownDedent(x) => *x,
-            Unknown { begin, end } => *begin,
-            End(x) => *x,
+            Pass(x) => newr(x, x + 1),
+            Ident { id, view } => view,
+            LParen(x) => newr(x, x + 1),
+            RParen(x) => newr(x, x + 1),
+            Plus(x) => newr(x, x + 1),
+            Dot(x) => newr(x, x + 1),
+            Def(x) => newr(x, x + 3),
+            Comma(x) => newr(x, x + 1),
+            Colon(x) => newr(x, x + 1),
+            Equal(x) => newr(x, x + 1),
+            Newline(x) => newr(x, x + 1),
+            Indent { begin, end } => newr(begin, end),
+            Integer { value, begin, end } => newr(begin, end.get()),
+            FloatingPoint { value, begin, end } => newr(begin, end.get()),
+            Dedent(x) => newr(x, x),
+            UnknownDedent(x) => newr(x, x),
+            Unknown { begin, end } => newr(begin, end),
+            End(x) => newr(x, x),
         };
     }
 }
@@ -341,7 +318,7 @@ impl<'a> Lexer<'a> {
 
                 Token::Ident {
                     id,
-                    location: begin,
+                    view: newr(begin, self.index),
                 }
             }
         };

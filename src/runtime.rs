@@ -12,6 +12,7 @@ pub enum Opcode {
     MakeFloat(f64),
     AddFloat,
     AddInt,
+    PushNone,
     Pop,
     Call(u32),
 }
@@ -74,11 +75,14 @@ impl Runtime {
                 }
                 _ => panic!(),
             },
+            PushNone => {
+                self.stack.push(0);
+            }
         }
     }
 
     pub fn print_func(&mut self) {
-        let arg = *self.stack.last().unwrap();
+        let arg = self.stack.pop().unwrap();
         let type_id = self.heap[arg - 1];
         let arg_value = self.heap[arg];
 
@@ -94,8 +98,6 @@ impl Runtime {
                 panic!();
             }
         }
-        self.stack.pop();
-        self.stack.push(0);
     }
 
     pub fn float_constructor(&mut self) {
@@ -116,6 +118,6 @@ impl Runtime {
             _ => panic!(),
         }
 
-        self.stack.push(ret_val);
+        *self.stack.last_mut().unwrap() = ret_val;
     }
 }

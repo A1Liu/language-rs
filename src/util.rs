@@ -8,9 +8,29 @@ use std::str::from_utf8_unchecked_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct CRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+pub fn newr(start: u32, end: u32) -> CRange {
+    return CRange { start, end };
+}
+
+pub fn joinr(l: CRange, r: CRange) -> CRange {
+    return newr(l.start, r.end);
+}
+
+impl CRange {
+    pub fn into_range(self) -> Range<usize> {
+        return (self.start as usize)..(self.end as usize);
+    }
+}
+
 #[derive(Debug)]
 pub struct Error<'a> {
-    pub location: Range<u32>,
+    pub location: CRange,
     pub message: &'a str,
 }
 

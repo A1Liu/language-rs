@@ -35,6 +35,7 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &Expr) {
             ops.push(Opcode::MakeFloat(*value));
         }
         ExprTag::Call { callee, arguments } => {
+            ops.push(Opcode::PushNone);
             for arg in arguments.iter() {
                 convert_expression_to_ops(ops, arg);
             }

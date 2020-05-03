@@ -1,5 +1,5 @@
+use crate::util::CRange;
 use std::collections::HashMap;
-use std::ops::Range;
 
 #[derive(Debug)]
 pub enum ExprTag<'a> {
@@ -48,7 +48,7 @@ impl<'a> InferredType<'a> {
 pub struct Expr<'a> {
     pub tag: ExprTag<'a>,
     pub inferred_type: InferredType<'a>,
-    pub view: Range<u32>,
+    pub view: CRange,
 }
 
 #[derive(Debug)]

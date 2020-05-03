@@ -69,7 +69,7 @@ where
                 let end = value.view.end;
                 if self.symbol_scope_contains(*name) {
                     return Err(Error {
-                        location: *name_loc..end,
+                        location: newr(*name_loc, end),
                         message: "can't shadow variables in current scope",
                     });
                 }
@@ -79,7 +79,7 @@ where
                     declared_type = decl_type;
                 } else {
                     return Err(Error {
-                        location: *name_loc..end,
+                        location: newr(*name_loc, end),
                         message: "type doesn't exist",
                     });
                 }
@@ -89,7 +89,7 @@ where
                     return Ok(());
                 } else {
                     return Err(Error {
-                        location: *name_loc..end,
+                        location: newr(*name_loc, end),
                         message: "type doesn't match value type",
                     });
                 }
@@ -105,7 +105,7 @@ where
                     Some(t) => t,
                     None => {
                         return Err(Error {
-                            location: *to_loc..value.view.start,
+                            location: newr(*to_loc, value.view.start),
                             message: "variable not found",
                         })
                     }
@@ -117,7 +117,7 @@ where
                 }
 
                 return Err(Error {
-                    location: *to_loc..value.view.end,
+                    location: newr(*to_loc, value.view.end),
                     message: "not assignment compatible",
                 });
             }
@@ -127,7 +127,7 @@ where
                 value,
             } => {
                 return Err(Error {
-                    location: to.view.start..value.view.end,
+                    location: joinr(to.view, value.view),
                     message: "no member assignments yet",
                 })
             }
@@ -140,7 +140,7 @@ where
             } => {
                 if self.symbol_scope_contains(*name) {
                     return Err(Error {
-                        location: *name_loc..(*name_loc + 1),
+                        location: newr(*name_loc, *name_loc + 1),
                         message: "can't shadow variables in current scope",
                     });
                 }
@@ -191,7 +191,7 @@ where
                     return Ok(&expr.inferred_type);
                 } else {
                     return Err(Error {
-                        location: expr.view.start..expr.view.end,
+                        location: joinr(expr.view, expr.view),
                         message: "identifier not found",
                     });
                 }
@@ -199,7 +199,7 @@ where
             Tup(tup) => {
                 if tup.len() > 10 {
                     return Err(Error {
-                        location: expr.view.start..expr.view.end,
+                        location: joinr(expr.view, expr.view),
                         message: "we don't support tuples of size larget than 10",
                     });
                 }
@@ -230,7 +230,7 @@ where
                                 arguments: float_arguments,
                             },
                             inferred_type: InferredType::Float,
-                            view: 0..0,
+                            view: newr(0, 0),
                         });
                     }
                     if *ltype == InferredType::Int {
@@ -242,7 +242,7 @@ where
                                 arguments: float_arguments,
                             },
                             inferred_type: InferredType::Float,
-                            view: 0..0,
+                            view: newr(0, 0),
                         });
                     }
                     return Ok(&expr.inferred_type);
@@ -254,7 +254,7 @@ where
                 }
 
                 return Err(Error {
-                    location: expr.view.start..expr.view.end,
+                    location: expr.view,
                     message: "added together incompatible types",
                 });
             }
@@ -272,7 +272,7 @@ where
                         let arg_type = self.check_expr(arg)?;
                         if !Self::is_assignment_compatible(formal, arg_type) {
                             return Err(Error {
-                                location: start..end,
+                                location: newr(start, end),
                                 message: "argument is wrong type",
                             });
                         }
@@ -282,7 +282,7 @@ where
                     return Ok(&expr.inferred_type);
                 } else {
                     return Err(Error {
-                        location: expr.view.start..expr.view.end,
+                        location: expr.view,
                         message: "called name is not a function",
                     });
                 }
@@ -295,7 +295,7 @@ where
                     return Ok(&expr.inferred_type);
                 } else {
                     return Err(Error {
-                        location: start..end,
+                        location: newr(start, end),
                         message: "parent isn't dereference-able",
                     });
                 }

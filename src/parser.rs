@@ -64,33 +64,33 @@ where
         use Token::*;
         let tok = self.peek();
         match self.peek() {
-            Pass(loc) => {
+            p @ Pass(_) => {
                 self.pop();
                 match self.pop() {
-                    Newline(loc2) => return Ok(Stmt::Pass),
+                    Newline(_) => return Ok(Stmt::Pass),
                     _ => {
                         return Err(Error {
-                            location: loc..(loc + 1),
+                            location: p.view(),
                             message: "pass needs to end in a newline",
                         })
                     }
                 }
             }
-            Def(loc) => return self.try_parse_func(),
+            Def(_) => return self.try_parse_func(),
             _ => {}
         }
 
-        if let Ident { id, location } = self.peek() {
+        if let Ident { id, view } = self.peek() {
             if let Colon(cloc) = self.peek2() {
                 self.pop();
                 self.pop();
                 let type_ident;
                 let tok = self.pop();
-                if let Ident { id, location } = tok {
+                if let Ident { id, view } = tok {
                     type_ident = id;
                 } else {
                     return Err(Error {
-                        location: tok.get_begin()..tok.get_end(),
+                        location: tok.view(),
                         message: "type needs to be identifier",
                     });
                 }
@@ -99,7 +99,7 @@ where
                     Equal(_) => {}
                     x => {
                         return Err(Error {
-                            location: x.get_begin()..x.get_end(),
+                            location: x.view(),
                             message: "expected equal sign after variable declaration",
                         })
                     }
@@ -111,14 +111,14 @@ where
                         let expr = self.buckets.add(expr);
                         return Ok(Stmt::Declare {
                             name: id,
-                            name_loc: location,
+                            name_loc: view.start,
                             type_name: type_ident,
                             value: expr,
                         });
                     }
-                    _ => {
+                    x => {
                         return Err(Error {
-                            location: tok.get_begin()..self.peek().get_end(),
+                            location: joinr(tok.view(), x.view()),
                             message: "statement needs to end in a newline",
                         })
                     }
@@ -138,7 +138,7 @@ where
                         Newline(_) => {}
                         x => {
                             return Err(Error {
-                                location: expr.view.start..x.get_end(),
+                                location: joinr(expr.view, x.view()),
                                 message: "statement needs to end in a newline",
                             })
                         }
@@ -161,14 +161,14 @@ where
                 }
                 x => {
                     return Err(Error {
-                        location: expr.view.start..expr.view.end,
+                        location: expr.view,
                         message: "assignment can only happen to member accessors or names",
                     })
                 }
             },
             x => {
                 return Err(Error {
-                    location: expr.view.start..x.get_end(),
+                    location: joinr(expr.view, x.view()),
                     message: "statement needs to end in a newline",
                 })
             }
@@ -188,14 +188,14 @@ where
         let def_name;
         let def_loc;
         match self.pop() {
-            Token::Ident { id, location } => {
+            Token::Ident { id, view } => {
                 def_name = id;
-                def_loc = location;
+                def_loc = view.start;
             }
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function arguments",
                 });
             }
@@ -206,7 +206,7 @@ where
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function arguments",
                 });
             }
@@ -219,13 +219,13 @@ where
                 Token::RParen(_) => {
                     break;
                 }
-                Token::Ident { id, location } => {
+                Token::Ident { id, view } => {
                     arg_name = id;
                 }
                 x => {
                     self.current_scope = prev_scope;
                     return Err(Error {
-                        location: x.get_begin()..x.get_end(),
+                        location: x.view(),
                         message: "unexpected token when parsing function arguments",
                     });
                 }
@@ -236,7 +236,7 @@ where
                 x => {
                     self.current_scope = prev_scope;
                     return Err(Error {
-                        location: x.get_begin()..x.get_end(),
+                        location: x.view(),
                         message: "unexpected token when parsing function arguments",
                     });
                 }
@@ -244,12 +244,12 @@ where
 
             let type_name;
             match self.pop() {
-                Token::Ident { id, location } => {
+                Token::Ident { id, view } => {
                     type_name = id;
                 }
                 x => {
                     return Err(Error {
-                        location: x.get_begin()..x.get_end(),
+                        location: x.view(),
                         message: "unexpected token when parsing function arguments",
                     })
                 }
@@ -268,7 +268,7 @@ where
                 x => {
                     self.current_scope = prev_scope;
                     return Err(Error {
-                        location: x.get_begin()..x.get_end(),
+                        location: x.view(),
                         message: "unexpected token when parsing function arguments",
                     });
                 }
@@ -282,7 +282,7 @@ where
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function signature",
                 });
             }
@@ -293,7 +293,7 @@ where
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function signature",
                 });
             }
@@ -304,7 +304,7 @@ where
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function signature",
                 });
             }
@@ -325,7 +325,7 @@ where
             x => {
                 self.current_scope = prev_scope;
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token when parsing function dedent",
                 });
             }
@@ -356,11 +356,11 @@ where
                     let op = self.buckets.add(expr);
                     let op2 = self.try_parse_unary_postfix()?;
                     let op2 = self.buckets.add(op2);
-                    let (start, end) = (op.view.start, op2.view.end);
+                    let view = joinr(op.view, op2.view);
                     expr = Expr {
                         tag: ExprTag::Add(op, op2),
                         inferred_type: InferredType::Unknown,
-                        view: start..end,
+                        view,
                     };
                 }
                 _ => return Ok(expr),
@@ -375,7 +375,7 @@ where
             if let Token::Dot(begin) = self.peek() {
                 self.pop();
                 match self.pop() {
-                    Token::Ident { id, location } => {
+                    Token::Ident { id, view } => {
                         let parent = self.buckets.add(expr);
                         let start = parent.view.start;
 
@@ -385,12 +385,12 @@ where
                                 member_id: id,
                             },
                             inferred_type: InferredType::Unknown,
-                            view: start..(location + self.lexer.id_list[id as usize].len() as u32),
+                            view,
                         }
                     }
                     x => {
                         return Err(Error {
-                            location: x.get_begin()..x.get_end(),
+                            location: x.view(),
                             message: "expected identifier after dot",
                         })
                     }
@@ -404,7 +404,7 @@ where
     pub fn try_parse_expr_atom(&mut self) -> Result<Expr<'b>, Error<'b>> {
         use Token::*;
         match self.peek() {
-            Ident { id, location } => {
+            Ident { id, view } => {
                 self.pop();
                 if let LParen(tup_begin) = self.peek() {
                     let arguments = self.try_parse_expr_tup()?;
@@ -412,7 +412,7 @@ where
                     if let Expr {
                         tag: ExprTag::Tup(slice),
                         inferred_type,
-                        view,
+                        view: eview,
                     } = arguments
                     {
                         expr = Expr {
@@ -421,17 +421,17 @@ where
                                 arguments: slice,
                             },
                             inferred_type: InferredType::Unknown,
-                            view: location..view.end,
+                            view: joinr(view, eview),
                         };
                     } else {
-                        let end = arguments.view.end;
+                        let aview = arguments.view;
                         expr = Expr {
                             tag: ExprTag::Call {
                                 callee: id,
                                 arguments: self.buckets.add_array(vec![arguments]),
                             },
                             inferred_type: InferredType::Unknown,
-                            view: location..end,
+                            view: joinr(view, aview),
                         };
                     }
                     return Ok(expr);
@@ -442,7 +442,7 @@ where
                             scope_origin: 0,
                         },
                         inferred_type: InferredType::Unknown,
-                        view: location..(location + self.lexer.id_list[id as usize].len() as u32),
+                        view,
                     });
                 }
             }
@@ -451,7 +451,7 @@ where
                 return Ok(Expr {
                     tag: ExprTag::Float(value),
                     inferred_type: InferredType::Float,
-                    view: begin..end.get(),
+                    view: newr(begin, end.get()),
                 });
             }
             Integer { value, begin, end } => {
@@ -459,7 +459,7 @@ where
                 return Ok(Expr {
                     tag: ExprTag::Int(value),
                     inferred_type: InferredType::Int,
-                    view: begin..end.get(),
+                    view: newr(begin, end.get()),
                 });
             }
             LParen(tup_begin) => {
@@ -477,7 +477,7 @@ where
             }
             x => {
                 return Err(Error {
-                    location: x.get_begin()..x.get_end(),
+                    location: x.view(),
                     message: "unexpected token while parsing expression",
                 });
             }
@@ -497,7 +497,7 @@ where
                 return Ok(Expr {
                     tag: ExprTag::Tup(self.buckets.add_array(Vec::new())),
                     inferred_type: InferredType::Unknown,
-                    view: tup_begin..(tup_end + 1),
+                    view: newr(tup_begin, tup_end + 1),
                 });
             }
             _ => {}
@@ -527,7 +527,7 @@ where
             RParen(end) => end + 1,
             _ => {
                 return Err(Error {
-                    location: tok.get_begin()..tok.get_end(),
+                    location: tok.view(),
                     message: "expected ')' character",
                 })
             }
@@ -536,7 +536,7 @@ where
         return Ok(Expr {
             tag: ExprTag::Tup(self.buckets.add_array(exprs)),
             inferred_type: InferredType::Unknown,
-            view: tup_begin..tup_end,
+            view: newr(tup_begin, tup_end),
         });
     }
 }
