@@ -1,13 +1,13 @@
 use crate::builtins::*;
 use crate::runtime::*;
-use crate::syntax_tree::*;
+use crate::type_checker::*;
 
-pub fn convert_stmts_to_ops(stmts: &[Stmt]) -> Vec<Opcode> {
+pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
     let mut functions = Vec::new();
 
     for stmt in stmts {
         match stmt {
-            Stmt::Expr(expr) => {
+            TStmt::Expr(expr) => {
                 convert_expression_to_ops(&mut functions, expr);
             }
             _ => panic!(),
@@ -17,24 +17,24 @@ pub fn convert_stmts_to_ops(stmts: &[Stmt]) -> Vec<Opcode> {
     return functions;
 }
 
-pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &Expr) {
+pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
     match &expr.tag {
-        ExprTag::Add(l, r) => {
+        TExprTag::Add(l, r) => {
             convert_expression_to_ops(ops, l);
             convert_expression_to_ops(ops, r);
-            if l.inferred_type == InferredType::Float {
+            if l.type_ == Type::Float {
                 ops.push(Opcode::AddFloat);
             } else {
                 ops.push(Opcode::AddInt);
             }
         }
-        ExprTag::Int(value) => {
+        TExprTag::Int(value) => {
             ops.push(Opcode::MakeInt(*value as i64));
         }
-        ExprTag::Float(value) => {
+        TExprTag::Float(value) => {
             ops.push(Opcode::MakeFloat(*value));
         }
-        ExprTag::Call { callee, arguments } => {
+        TExprTag::Call { callee, arguments } => {
             ops.push(Opcode::PushNone);
             for arg in arguments.iter() {
                 convert_expression_to_ops(ops, arg);

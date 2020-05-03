@@ -1,8 +1,7 @@
-use crate::syntax_tree::*;
-
 pub struct Runtime {
     pub stack: Vec<usize>,
     pub heap: Vec<u64>,
+    pub fp_stack: Vec<usize>,
     pub fp: usize,
 }
 
@@ -14,6 +13,8 @@ pub enum Opcode {
     AddInt,
     PushNone,
     Pop,
+    GetLocal { stack_offset: i32 },
+    SetLocal { stack_offset: i32 },
     Call(u32),
 }
 
@@ -26,8 +27,9 @@ pub const FLOAT_CONSTRUCTOR: u32 = 1;
 impl Runtime {
     pub fn new() -> Self {
         return Self {
-            stack: Vec::new(),
+            stack: Vec::new(), // dummy frame pointer value
             heap: Vec::new(),
+            fp_stack: Vec::new(),
             fp: 0,
         };
     }
@@ -73,8 +75,15 @@ impl Runtime {
                 FLOAT_CONSTRUCTOR => {
                     self.float_constructor();
                 }
-                _ => panic!(),
+                x => {}
             },
+            GetLocal { stack_offset } => {
+                self.stack
+                    .push(self.stack[self.fp.wrapping_add(stack_offset as usize)]);
+            }
+            SetLocal { stack_offset } => {
+                self.stack[self.fp.wrapping_add(stack_offset as usize)] = self.stack.pop().unwrap();
+            }
             PushNone => {
                 self.stack.push(0);
             }

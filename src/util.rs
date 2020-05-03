@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ops::Range;
 use std::ptr;
-use std::slice::from_raw_parts_mut;
+use std::slice::{from_raw_parts, from_raw_parts_mut};
 use std::str::from_utf8_unchecked_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct CRange {
     pub start: u32,
     pub end: u32,
@@ -28,6 +28,24 @@ impl CRange {
     }
 }
 
+impl std::fmt::Debug for CRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("")
+            .field(&self.start)
+            .field(&self.end)
+            .finish()
+    }
+}
+
+impl std::fmt::Display for CRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("")
+            .field(&self.start)
+            .field(&self.end)
+            .finish()
+    }
+}
+
 #[derive(Debug)]
 pub struct Error<'a> {
     pub location: CRange,
@@ -38,6 +56,14 @@ pub struct Error<'a> {
 pub struct Bucket {
     begin: *mut u8,
     end: *mut u8,
+}
+
+pub fn mut_ref_to_slice<T>(data: &mut T) -> &mut [T] {
+    return unsafe { from_raw_parts_mut(data, 1) };
+}
+
+pub fn ref_to_slice<T>(data: &T) -> &[T] {
+    return unsafe { from_raw_parts(data, 1) };
 }
 
 // taken from https://github.com/llogiq/partition

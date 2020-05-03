@@ -7,8 +7,6 @@ pub struct Parser<'a, 'b>
 where
     'b: 'a,
 {
-    next_scope_id: u32,
-    current_scope: u32,
     buckets: &'a mut Buckets<'b>,
     pub lexer: Lexer<'a>,
     token: Token,
@@ -25,8 +23,6 @@ where
         let token2 = lexer.next();
 
         return Parser {
-            next_scope_id: 1,
-            current_scope: 0,
             buckets,
             lexer,
             token,
@@ -131,7 +127,7 @@ where
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
             Equal(_) => match &mut expr.tag {
-                ExprTag::Ident { id, scope_origin } => {
+                ExprTag::Ident { id } => {
                     let value = self.try_parse_expr()?;
                     let value = self.buckets.add(value);
                     match self.pop() {
@@ -145,7 +141,6 @@ where
                     }
                     return Ok(Stmt::Assign {
                         to: *id,
-                        to_scope: *scope_origin,
                         to_loc: expr.view.start,
                         value,
                     });
@@ -176,10 +171,6 @@ where
     }
 
     pub fn try_parse_func(&mut self) -> Result<Stmt<'b>, Error<'b>> {
-        let prev_scope = self.current_scope;
-        self.current_scope = self.next_scope_id;
-        self.next_scope_id += 1;
-
         match self.pop() {
             Token::Def(_) => {}
             _ => panic!(),
@@ -193,7 +184,6 @@ where
                 def_loc = view.start;
             }
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function arguments",
@@ -204,7 +194,6 @@ where
         match self.pop() {
             Token::LParen(_) => {}
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function arguments",
@@ -223,7 +212,6 @@ where
                     arg_name = id;
                 }
                 x => {
-                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.view(),
                         message: "unexpected token when parsing function arguments",
@@ -234,7 +222,6 @@ where
             match self.pop() {
                 Token::Colon(_) => {}
                 x => {
-                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.view(),
                         message: "unexpected token when parsing function arguments",
@@ -266,7 +253,6 @@ where
                 }
                 Token::Comma(_) => {}
                 x => {
-                    self.current_scope = prev_scope;
                     return Err(Error {
                         location: x.view(),
                         message: "unexpected token when parsing function arguments",
@@ -280,7 +266,6 @@ where
         match self.pop() {
             Token::Colon(_) => {}
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function signature",
@@ -291,7 +276,6 @@ where
         match self.pop() {
             Token::Newline(_) => {}
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function signature",
@@ -302,7 +286,6 @@ where
         match self.pop() {
             Token::Indent { begin, end } => {}
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function signature",
@@ -323,7 +306,6 @@ where
         match self.pop() {
             Token::Dedent(_) => {}
             x => {
-                self.current_scope = prev_scope;
                 return Err(Error {
                     location: x.view(),
                     message: "unexpected token when parsing function dedent",
@@ -334,11 +316,9 @@ where
         let function = Stmt::Function {
             name: def_name,
             name_loc: def_loc,
-            scope_id: self.current_scope,
             arguments,
             stmts,
         };
-        self.current_scope = prev_scope;
         return Ok(function);
     }
 
@@ -359,7 +339,6 @@ where
                     let view = joinr(op.view, op2.view);
                     expr = Expr {
                         tag: ExprTag::Add(op, op2),
-                        inferred_type: InferredType::Unknown,
                         view,
                     };
                 }
@@ -384,7 +363,6 @@ where
                                 parent,
                                 member_id: id,
                             },
-                            inferred_type: InferredType::Unknown,
                             view,
                         }
                     }
@@ -411,7 +389,6 @@ where
                     let expr;
                     if let Expr {
                         tag: ExprTag::Tup(slice),
-                        inferred_type,
                         view: eview,
                     } = arguments
                     {
@@ -420,7 +397,6 @@ where
                                 callee: id,
                                 arguments: slice,
                             },
-                            inferred_type: InferredType::Unknown,
                             view: joinr(view, eview),
                         };
                     } else {
@@ -430,18 +406,13 @@ where
                                 callee: id,
                                 arguments: self.buckets.add_array(vec![arguments]),
                             },
-                            inferred_type: InferredType::Unknown,
                             view: joinr(view, aview),
                         };
                     }
                     return Ok(expr);
                 } else {
                     return Ok(Expr {
-                        tag: ExprTag::Ident {
-                            id,
-                            scope_origin: 0,
-                        },
-                        inferred_type: InferredType::Unknown,
+                        tag: ExprTag::Ident { id },
                         view,
                     });
                 }
@@ -450,7 +421,6 @@ where
                 self.pop();
                 return Ok(Expr {
                     tag: ExprTag::Float(value),
-                    inferred_type: InferredType::Float,
                     view: newr(begin, end.get()),
                 });
             }
@@ -458,7 +428,6 @@ where
                 self.pop();
                 return Ok(Expr {
                     tag: ExprTag::Int(value),
-                    inferred_type: InferredType::Int,
                     view: newr(begin, end.get()),
                 });
             }
@@ -496,7 +465,6 @@ where
                 self.pop();
                 return Ok(Expr {
                     tag: ExprTag::Tup(self.buckets.add_array(Vec::new())),
-                    inferred_type: InferredType::Unknown,
                     view: newr(tup_begin, tup_end + 1),
                 });
             }
@@ -535,7 +503,6 @@ where
 
         return Ok(Expr {
             tag: ExprTag::Tup(self.buckets.add_array(exprs)),
-            inferred_type: InferredType::Unknown,
             view: newr(tup_begin, tup_end),
         });
     }

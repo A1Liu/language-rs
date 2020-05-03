@@ -1,4 +1,4 @@
-use crate::syntax_tree::InferredType;
+use crate::type_checker::Type;
 use crate::util::Buckets;
 use std::collections::HashMap;
 
@@ -21,16 +21,16 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     return (names, names_map);
 }
 
-pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
+pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a Type<'a>> {
     let mut map = HashMap::new();
-    let none_type = &*buckets.add(InferredType::None);
-    let any_arg = &*buckets.add_array(vec![InferredType::Any]);
-    let print_type = &*buckets.add(InferredType::Function {
+    let none_type = &*buckets.add(Type::None);
+    let any_arg = &*buckets.add_array(vec![Type::Any]);
+    let print_type = &*buckets.add(Type::Function {
         return_type: none_type,
         arguments: any_arg,
     });
-    let float = &*buckets.add(InferredType::Float);
-    let float_type = &*buckets.add(InferredType::Function {
+    let float = &*buckets.add(Type::Float);
+    let float_type = &*buckets.add(Type::Function {
         return_type: float,
         arguments: any_arg,
     });
@@ -41,10 +41,10 @@ pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a
     return map;
 }
 
-pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a InferredType<'a>> {
+pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a Type<'a>> {
     let mut map = HashMap::new();
-    map.insert(FLOAT_IDX, &*buckets.add(InferredType::Float));
-    map.insert(INT_IDX, &*buckets.add(InferredType::Int));
+    map.insert(FLOAT_IDX, &*buckets.add(Type::Float));
+    map.insert(INT_IDX, &*buckets.add(Type::Int));
     return map;
 }
 

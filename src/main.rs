@@ -50,8 +50,8 @@ fn run_on_string<'b>(
     };
 
     let mut t = type_checker::TypeChecker::new(buckets);
-    match t.check_program(program) {
-        Ok(()) => {}
+    let program = match t.check_stmts(program) {
+        Ok(p) => p,
         Err(e) => {
             return Err(Diagnostic::error()
                 .with_message(e.message)
@@ -60,7 +60,7 @@ fn run_on_string<'b>(
                     (e.location.start as usize)..(e.location.end as usize),
                 )]));
         }
-    }
+    };
 
     println!("{:?}", program);
 
