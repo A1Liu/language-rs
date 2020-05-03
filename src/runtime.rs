@@ -1,132 +1,121 @@
-use crate::builtins::*;
 use crate::syntax_tree::*;
 
-pub struct RuntimeScope {
-    pub stack: Vec<u64>,
+pub struct Runtime {
+    pub stack: Vec<usize>,
     pub heap: Vec<u64>,
     pub fp: usize,
-    pub sp: usize,
 }
 
-impl RuntimeScope {
+#[derive(Debug, Clone, Copy)]
+pub enum Opcode {
+    MakeInt(i64),
+    MakeFloat(f64),
+    AddFloat,
+    AddInt,
+    Pop,
+    Call(u32),
+}
+
+pub const INT_TYPE: u64 = 0;
+pub const FLOAT_TYPE: u64 = 1;
+
+pub const PRINT_FUNC: u32 = 0;
+pub const FLOAT_CONSTRUCTOR: u32 = 1;
+
+impl Runtime {
     pub fn new() -> Self {
         return Self {
             stack: Vec::new(),
             heap: Vec::new(),
             fp: 0,
-            sp: 0,
         };
     }
 
-    // fn search_values_table(&self, id: u32) -> &u64 {
-    //     let mut values = &self.values;
-    //     let mut parent = self.parent;
-    //     loop {
-    //         if values.contains_key(&id) {
-    //             return &values[&id];
-    //         }
-
-    //         if let Some(p) = parent {
-    //             values = &p.values;
-    //             parent = p.parent;
-    //         } else {
-    //             break;
-    //         }
-    //     }
-
-    //     panic!();
-    // }
-
-    pub fn run_stmt(&mut self, stmt: &Stmt) {
-        use Stmt::*;
-        match stmt {
-            Expr(expr) => {
-                self.eval_expr(expr);
-            }
-            // Assign { to, to_loc, value } => {
-            //     let value = self.eval_expr(value);
-            //     self.values.insert(*to, value);
-            // }
-            Declare {
-                name,
-                name_loc,
-                type_name,
-                value,
-            } => {}
-
-            _ => panic!(),
-        }
-    }
-
-    fn eval_expr(&mut self, expr: &Expr) -> usize {
-        use ExprTag::*;
-        return match &expr.tag {
-            Int(value) => {
+    pub fn run_op(&mut self, op: Opcode) {
+        use Opcode::*;
+        match op {
+            MakeInt(int) => {
+                self.heap.push(INT_TYPE);
                 let ret_val = self.heap.len();
-                self.heap.push(*value);
-                return ret_val;
+                self.heap.push(int as u64);
+                self.stack.push(ret_val);
             }
-            Float(value) => {
+            MakeFloat(float) => {
+                self.heap.push(FLOAT_TYPE);
                 let ret_val = self.heap.len();
-                self.heap.push(value.to_bits());
-                return ret_val;
+                self.heap.push(float.to_bits());
+                self.stack.push(ret_val);
             }
-            // Call { callee, arguments } => {
-            //     if let ExprTag::Ident(PRINT_IDX) = callee.tag {
-            //         self.eval_print_function(arguments)
-            //     } else {
-            //         panic!();
-            //     }
-            // }
-            Add(l, r) => {
-                let lexpr = self.eval_expr(l);
-                let rexpr = self.eval_expr(r);
+            AddFloat => {
+                let float2 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
+                let float1 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
+                self.heap.push(FLOAT_TYPE);
                 let ret_val = self.heap.len();
-                if let InferredType::Int = l.inferred_type {
-                    if let InferredType::Int = r.inferred_type {
-                        self.heap
-                            .push((self.heap[lexpr] as i64 + self.heap[rexpr] as i64) as u64);
-                        ret_val
-                    } else if let InferredType::Float = r.inferred_type {
-                        self.heap.push(
-                            ((self.heap[lexpr] as i64) as f64 + f64::from_bits(self.heap[rexpr]))
-                                .to_bits(),
-                        );
-                        ret_val
-                    } else {
-                        panic!();
-                    }
-                } else if let InferredType::Float = l.inferred_type {
-                    if let InferredType::Int = r.inferred_type {
-                        self.heap.push(
-                            (f64::from_bits(self.heap[lexpr]) + self.heap[rexpr] as i64 as f64)
-                                .to_bits(),
-                        );
-                        ret_val
-                    } else if let InferredType::Float = r.inferred_type {
-                        self.heap.push(
-                            (f64::from_bits(self.heap[lexpr]) + f64::from_bits(self.heap[rexpr]))
-                                .to_bits(),
-                        );
-                        ret_val
-                    } else {
-                        panic!();
-                    }
-                } else {
-                    panic!();
+                self.heap.push((float1 + float2).to_bits());
+                self.stack.push(ret_val);
+            }
+            AddInt => {
+                let int2 = self.heap[self.stack.pop().unwrap()] as i64;
+                let int1 = self.heap[self.stack.pop().unwrap()] as i64;
+                self.heap.push(INT_TYPE);
+                let ret_val = self.heap.len();
+                self.heap.push((int1 + int2) as u64);
+                self.stack.push(ret_val);
+            }
+            Pop => {
+                self.stack.pop();
+            }
+            Call(func_id) => match func_id {
+                PRINT_FUNC => {
+                    self.print_func();
                 }
-            }
-            _ => panic!(),
-        };
+                FLOAT_CONSTRUCTOR => {
+                    self.float_constructor();
+                }
+                _ => panic!(),
+            },
+        }
     }
 
-    fn eval_print_function(&mut self, args: &[Expr]) -> usize {
-        let bytes = self.eval_expr(&args[0]);
-        if let InferredType::Int = args[0].inferred_type {
-            println!("{}", self.heap[bytes] as i64);
-        } else if let InferredType::Float = args[0].inferred_type {
-            println!("{}", f64::from_bits(self.heap[bytes]));
+    pub fn print_func(&mut self) {
+        let arg = *self.stack.last().unwrap();
+        let type_id = self.heap[arg - 1];
+        let arg_value = self.heap[arg];
+
+        match type_id {
+            INT_TYPE => {
+                println!("{}", arg_value as i64);
+            }
+            FLOAT_TYPE => {
+                println!("{}", f64::from_bits(arg_value));
+            }
+            x => {
+                println!("{}", x);
+                panic!();
+            }
         }
-        return 0;
+        self.stack.pop();
+        self.stack.push(0);
+    }
+
+    pub fn float_constructor(&mut self) {
+        let arg = self.stack.pop().unwrap();
+        let type_id = self.heap[arg - 1];
+        let arg_value = self.heap[arg];
+
+        self.heap.push(FLOAT_TYPE);
+        let ret_val = self.heap.len();
+
+        match type_id {
+            INT_TYPE => {
+                self.heap.push((arg_value as i64 as f64).to_bits());
+            }
+            FLOAT_TYPE => {
+                self.heap.push(arg_value);
+            }
+            _ => panic!(),
+        }
+
+        self.stack.push(ret_val);
     }
 }

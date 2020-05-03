@@ -11,7 +11,7 @@ pub enum ExprTag<'a> {
     },
     Tup(&'a mut [Expr<'a>]),
     Call {
-        callee: &'a mut Expr<'a>,
+        callee: u32,
         arguments: &'a mut [Expr<'a>],
     },
     DotAccess {
@@ -59,7 +59,6 @@ pub struct FuncParam {
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
-    End,
     Pass,
     Expr(&'a mut Expr<'a>),
     Declare {

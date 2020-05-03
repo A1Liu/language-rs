@@ -8,6 +8,7 @@ extern crate codespan_reporting;
 
 mod builtins;
 mod lexer;
+mod opcodes;
 mod parser;
 mod runtime;
 mod syntax_tree;
@@ -63,10 +64,13 @@ fn run_on_string<'b>(
 
     println!("{:?}", program);
 
-    // let mut rscope = runtime::RuntimeScope::new();
-    // for stmt in program {
-    //     rscope.run_stmt(stmt);
-    // }
+    let ops = opcodes::convert_stmts_to_ops(program);
+    println!("{:?}", ops);
+    let mut run = runtime::Runtime::new();
+    for op in ops {
+        run.run_op(op);
+    }
+
     return Ok(());
 }
 

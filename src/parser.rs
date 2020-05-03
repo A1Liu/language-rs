@@ -372,36 +372,7 @@ where
         let mut expr = self.try_parse_expr_atom()?;
 
         loop {
-            if let Token::LParen(begin) = self.peek() {
-                let callee = self.buckets.add(expr);
-                let arguments = self.try_parse_expr_tup()?;
-                if let Expr {
-                    tag: ExprTag::Tup(slice),
-                    inferred_type,
-                    view,
-                } = arguments
-                {
-                    let (start, end) = (callee.view.start, callee.view.end);
-                    expr = Expr {
-                        tag: ExprTag::Call {
-                            callee,
-                            arguments: slice,
-                        },
-                        inferred_type: InferredType::Unknown,
-                        view: start..end,
-                    };
-                } else {
-                    let (start, end) = (callee.view.start, arguments.view.end);
-                    expr = Expr {
-                        tag: ExprTag::Call {
-                            callee,
-                            arguments: self.buckets.add_array(vec![arguments]),
-                        },
-                        inferred_type: InferredType::Unknown,
-                        view: start..end,
-                    };
-                }
-            } else if let Token::Dot(begin) = self.peek() {
+            if let Token::Dot(begin) = self.peek() {
                 self.pop();
                 match self.pop() {
                     Token::Ident { id, location } => {
@@ -435,14 +406,45 @@ where
         match self.peek() {
             Ident { id, location } => {
                 self.pop();
-                return Ok(Expr {
-                    tag: ExprTag::Ident {
-                        id,
-                        scope_origin: 0,
-                    },
-                    inferred_type: InferredType::Unknown,
-                    view: location..(location + self.lexer.id_list[id as usize].len() as u32),
-                });
+                if let LParen(tup_begin) = self.peek() {
+                    let arguments = self.try_parse_expr_tup()?;
+                    let expr;
+                    if let Expr {
+                        tag: ExprTag::Tup(slice),
+                        inferred_type,
+                        view,
+                    } = arguments
+                    {
+                        expr = Expr {
+                            tag: ExprTag::Call {
+                                callee: id,
+                                arguments: slice,
+                            },
+                            inferred_type: InferredType::Unknown,
+                            view: location..view.end,
+                        };
+                    } else {
+                        let end = arguments.view.end;
+                        expr = Expr {
+                            tag: ExprTag::Call {
+                                callee: id,
+                                arguments: self.buckets.add_array(vec![arguments]),
+                            },
+                            inferred_type: InferredType::Unknown,
+                            view: location..end,
+                        };
+                    }
+                    return Ok(expr);
+                } else {
+                    return Ok(Expr {
+                        tag: ExprTag::Ident {
+                            id,
+                            scope_origin: 0,
+                        },
+                        inferred_type: InferredType::Unknown,
+                        view: location..(location + self.lexer.id_list[id as usize].len() as u32),
+                    });
+                }
             }
             FloatingPoint { value, begin, end } => {
                 self.pop();

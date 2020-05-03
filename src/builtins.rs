@@ -29,9 +29,15 @@ pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a
         return_type: none_type,
         arguments: any_arg,
     });
+    let float = &*buckets.add(InferredType::Float);
+    let float_type = &*buckets.add(InferredType::Function {
+        return_type: float,
+        arguments: any_arg,
+    });
 
     map.insert(PRINT_IDX, print_type);
     map.insert(NONE_IDX, none_type);
+    map.insert(FLOAT_IDX, float_type);
     return map;
 }
 

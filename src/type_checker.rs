@@ -3,6 +3,7 @@ use crate::syntax_tree::*;
 use crate::util::*;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ptr;
 
 pub struct SymbolTable<'a, 'b>
 where
@@ -55,7 +56,6 @@ where
     pub fn check_stmt<'c>(&mut self, stmt: &'c mut Stmt<'b>) -> Result<(), Error<'b>> {
         match stmt {
             Stmt::Pass => return Ok(()),
-            Stmt::End => return Ok(()),
             Stmt::Expr(expr) => {
                 self.check_expr(expr)?;
                 return Ok(());
@@ -218,10 +218,33 @@ where
             Add(l, r) => {
                 let ltype = self.check_expr(l)?;
                 let rtype = self.check_expr(r)?;
-                if (*ltype == InferredType::Float && *rtype == InferredType::Int)
-                    || (*rtype == InferredType::Float && *ltype == InferredType::Int)
-                {
+                if *ltype == InferredType::Float || *rtype == InferredType::Float {
                     expr.inferred_type = InferredType::Float;
+                    if *rtype == InferredType::Int {
+                        // insert float conversion
+                        let float_arguments =
+                            self.buckets.add_array(vec![unsafe { ptr::read(*r) }]);
+                        *r = self.buckets.add(Expr {
+                            tag: ExprTag::Call {
+                                callee: FLOAT_IDX,
+                                arguments: float_arguments,
+                            },
+                            inferred_type: InferredType::Float,
+                            view: 0..0,
+                        });
+                    }
+                    if *ltype == InferredType::Int {
+                        let float_arguments =
+                            self.buckets.add_array(vec![unsafe { ptr::read(*l) }]);
+                        *l = self.buckets.add(Expr {
+                            tag: ExprTag::Call {
+                                callee: FLOAT_IDX,
+                                arguments: float_arguments,
+                            },
+                            inferred_type: InferredType::Float,
+                            view: 0..0,
+                        });
+                    }
                     return Ok(&expr.inferred_type);
                 }
 
@@ -236,12 +259,13 @@ where
                 });
             }
             Call { callee, arguments } => {
-                let (start, end) = (callee.view.start, callee.view.end);
-                let callee_type = self.check_expr(callee)?;
-                if let &InferredType::Function {
-                    return_type,
-                    arguments: args_formal,
-                } = callee_type
+                if let Some((
+                    value,
+                    &InferredType::Function {
+                        return_type,
+                        arguments: args_formal,
+                    },
+                )) = self.search_symbol_table(*callee)
                 {
                     for (formal, arg) in args_formal.iter().zip(arguments.iter_mut()) {
                         let (start, end) = (arg.view.start, arg.view.end);
@@ -258,8 +282,8 @@ where
                     return Ok(&expr.inferred_type);
                 } else {
                     return Err(Error {
-                        location: start..end,
-                        message: "called expression is not a function",
+                        location: expr.view.start..expr.view.end,
+                        message: "called name is not a function",
                     });
                 }
             }
