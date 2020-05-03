@@ -49,15 +49,18 @@ pub struct TExpr<'a> {
 #[derive(Debug)]
 pub enum TStmt<'a> {
     Expr(&'a TExpr<'a>),
+    Declare {
+        decl_type: &'a Type<'a>,
+        value: &'a TExpr<'a>,
+    },
 }
 
 pub struct SymbolTable<'a, 'b>
 where
     'b: 'a,
 {
-    pub scope_id: u32,
     pub symbol_types: HashMap<u32, &'b Type<'b>>,
-    pub symbol_offsets: HashMap<u32, u32>,
+    pub symbol_offsets: HashMap<u32, i32>,
     phantom: PhantomData<&'a u8>,
 }
 
@@ -67,6 +70,7 @@ where
 {
     buckets: &'a mut Buckets<'b>,
     symbol_tables: Vec<SymbolTable<'a, 'b>>,
+    types: HashMap<u32, &'b Type<'b>>,
 }
 
 impl<'a, 'b> TypeChecker<'a, 'b>
@@ -79,16 +83,17 @@ where
         return Self {
             buckets,
             symbol_tables: vec![SymbolTable {
-                scope_id: 0,
                 symbol_types: symbol_table,
                 symbol_offsets: HashMap::new(),
                 phantom: PhantomData,
             }],
+            types: type_table,
         };
     }
 
     pub fn check_stmts(&mut self, stmts: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
         let mut tstmts = Vec::new();
+        let mut current_offset = 0;
         for stmt in stmts {
             match stmt {
                 Stmt::Pass => {}
@@ -96,6 +101,40 @@ where
                     let expr = self.check_expr(expr)?;
                     let expr = self.buckets.add(expr);
                     tstmts.push(TStmt::Expr(expr));
+                }
+                Stmt::Declare {
+                    name,
+                    name_view,
+                    type_name,
+                    type_view,
+                    value,
+                } => {
+                    if self.symbol_scope_contains(*name) {
+                        return Err(Error {
+                            location: *name_view,
+                            message: "callee not a function",
+                        });
+                    }
+
+                    let decl_type;
+                    if let Some(decl) = self.types.get(type_name) {
+                        decl_type = *decl;
+                    } else {
+                        return Err(Error {
+                            location: *type_view,
+                            message: "callee not a function",
+                        });
+                    }
+
+                    let expr = self.check_expr(value)?;
+                    let expr = self.buckets.add(expr);
+
+                    self.symbol_scope_add(*name, decl_type, current_offset);
+                    tstmts.push(TStmt::Declare {
+                        decl_type,
+                        value: expr,
+                    });
+                    current_offset += 1;
                 }
                 _ => panic!(),
             }
@@ -154,13 +193,10 @@ where
                 });
             }
             ExprTag::Call { callee, arguments } => {
-                if let Some((
-                    scope_id,
-                    Type::Function {
-                        return_type,
-                        arguments: args_formal,
-                    },
-                )) = self.search_symbol_table(*callee)
+                if let Some(Type::Function {
+                    return_type,
+                    arguments: args_formal,
+                }) = self.search_symbol_table(*callee)
                 {
                     let mut args = Vec::new();
                     for (formal, arg) in args_formal.iter().zip(arguments.iter()) {
@@ -207,9 +243,10 @@ where
         };
     }
 
-    fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b Type<'b>) {
+    fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b Type<'b>, offset: i32) {
         let sym = self.symbol_tables.last_mut().unwrap();
         sym.symbol_types.insert(id, symbol_type);
+        sym.symbol_offsets.insert(id, offset);
     }
 
     fn symbol_scope_contains(&self, id: u32) -> bool {
@@ -225,11 +262,19 @@ where
             return None;
         }
     }
+    fn search_symbol_scope_for_offset(&self, id: u32) -> Option<i32> {
+        let sym = self.symbol_tables.last().unwrap();
+        if sym.symbol_types.contains_key(&id) {
+            return Some(sym.symbol_offsets[&id]);
+        } else {
+            return None;
+        }
+    }
 
-    fn search_symbol_table(&self, id: u32) -> Option<(u32, &'b Type<'b>)> {
+    fn search_symbol_table(&self, id: u32) -> Option<&'b Type<'b>> {
         for symbol_table in self.symbol_tables.iter().rev() {
             if symbol_table.symbol_types.contains_key(&id) {
-                return Some((symbol_table.scope_id, symbol_table.symbol_types[&id]));
+                return Some(symbol_table.symbol_types[&id]);
             }
         }
         return None;

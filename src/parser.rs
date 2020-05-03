@@ -81,9 +81,11 @@ where
                 self.pop();
                 self.pop();
                 let type_ident;
+                let type_view;
                 let tok = self.pop();
                 if let Ident { id, view } = tok {
                     type_ident = id;
+                    type_view = view;
                 } else {
                     return Err(Error {
                         location: tok.view(),
@@ -107,8 +109,9 @@ where
                         let expr = self.buckets.add(expr);
                         return Ok(Stmt::Declare {
                             name: id,
-                            name_loc: view.start,
+                            name_view: view,
                             type_name: type_ident,
+                            type_view,
                             value: expr,
                         });
                     }
@@ -177,11 +180,11 @@ where
         }
 
         let def_name;
-        let def_loc;
+        let def_view;
         match self.pop() {
             Token::Ident { id, view } => {
                 def_name = id;
-                def_loc = view.start;
+                def_view = view;
             }
             x => {
                 return Err(Error {
@@ -315,7 +318,7 @@ where
 
         let function = Stmt::Function {
             name: def_name,
-            name_loc: def_loc,
+            name_loc: def_view.start,
             arguments,
             stmts,
         };

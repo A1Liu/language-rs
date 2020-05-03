@@ -1,5 +1,4 @@
 use crate::util::CRange;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum ExprTag<'a> {
@@ -38,8 +37,9 @@ pub enum Stmt<'a> {
     Expr(&'a mut Expr<'a>),
     Declare {
         name: u32,
-        name_loc: u32,
+        name_view: CRange,
         type_name: u32,
+        type_view: CRange,
         value: &'a mut Expr<'a>,
     },
     Function {
