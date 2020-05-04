@@ -112,7 +112,7 @@ where
                     if self.symbol_scope_contains(*name) {
                         return Err(Error {
                             location: *name_view,
-                            message: "callee not a function",
+                            message: "redeclaration of name in the same scope",
                         });
                     }
 
@@ -122,12 +122,31 @@ where
                     } else {
                         return Err(Error {
                             location: *type_view,
-                            message: "callee not a function",
+                            message: "type doesn't exist",
                         });
                     }
 
                     let expr = self.check_expr(value)?;
                     let expr = self.buckets.add(expr);
+
+                    if !Self::is_assignment_compatible(decl_type, &expr.type_) {
+                        return Err(Error {
+                            location: value.view,
+                            message: "argument is wrong type",
+                        });
+                    }
+
+                    let expr = if *decl_type == Type::Float && expr.type_ == Type::Int {
+                        self.buckets.add(TExpr {
+                            tag: TExprTag::Call {
+                                callee: FLOAT_IDX,
+                                arguments: ref_to_slice(expr),
+                            },
+                            type_: Type::Float,
+                        })
+                    } else {
+                        expr
+                    };
 
                     self.symbol_scope_add(*name, decl_type, current_offset);
                     tstmts.push(TStmt::Declare {

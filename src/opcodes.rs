@@ -3,24 +3,32 @@ use crate::runtime::*;
 use crate::type_checker::*;
 
 pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
-    let mut functions = Vec::new();
+    let mut ops = Vec::new();
 
     for stmt in stmts {
         if let TStmt::Declare { decl_type, value } = stmt {
-            convert_expression_to_ops(&mut functions, value);
+            ops.push(Opcode::PushNone);
         }
     }
 
+    let mut decl_index = 0;
     for stmt in stmts {
         match stmt {
             TStmt::Expr(expr) => {
-                convert_expression_to_ops(&mut functions, expr);
+                convert_expression_to_ops(&mut ops, expr);
+                ops.push(Opcode::Pop);
             }
-            TStmt::Declare { decl_type, value } => {}
+            TStmt::Declare { decl_type, value } => {
+                convert_expression_to_ops(&mut ops, value);
+                ops.push(Opcode::SetLocal {
+                    stack_offset: decl_index,
+                });
+                decl_index += 1;
+            }
         }
     }
 
-    return functions;
+    return ops;
 }
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {

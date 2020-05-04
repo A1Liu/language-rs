@@ -1,9 +1,5 @@
 asdf: int = 12
-
-print(asdf)
-
 hello: float = 32
+meep: float = asdf + hello
 
-print(asdf)
-print(hello)
-print(asdf)
+print(meep)

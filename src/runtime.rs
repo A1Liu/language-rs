@@ -85,9 +85,10 @@ impl Runtime {
                 self.stack[self.fp.wrapping_add(stack_offset as usize)] = self.stack.pop().unwrap();
             }
             PushNone => {
-                self.stack.push(0);
+                self.stack.push(!0);
             }
         }
+        // println!(":{}", self.stack.len());
     }
 
     pub fn print_func(&mut self) {
