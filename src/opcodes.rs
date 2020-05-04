@@ -6,11 +6,17 @@ pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
     let mut functions = Vec::new();
 
     for stmt in stmts {
+        if let TStmt::Declare { decl_type, value } = stmt {
+            convert_expression_to_ops(&mut functions, value);
+        }
+    }
+
+    for stmt in stmts {
         match stmt {
             TStmt::Expr(expr) => {
                 convert_expression_to_ops(&mut functions, expr);
             }
-            _ => panic!(),
+            TStmt::Declare { decl_type, value } => {}
         }
     }
 
@@ -19,6 +25,11 @@ pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
     match &expr.tag {
+        TExprTag::Ident { stack_offset } => {
+            ops.push(Opcode::GetLocal {
+                stack_offset: *stack_offset,
+            });
+        }
         TExprTag::Add(l, r) => {
             convert_expression_to_ops(ops, l);
             convert_expression_to_ops(ops, r);
@@ -45,6 +56,5 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
                 _ => panic!(),
             }
         }
-        _ => panic!(),
     }
 }

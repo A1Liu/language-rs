@@ -29,7 +29,7 @@ impl<'a> Type<'a> {
 #[derive(Debug)]
 pub enum TExprTag<'a> {
     Ident {
-        scope_offset: u32,
+        stack_offset: i32,
     },
     Int(i64),
     Float(f64),
@@ -157,6 +157,21 @@ where
                     type_: Type::Float,
                 });
             }
+            ExprTag::Ident { id } => {
+                if let Some(offset) = self.search_symbol_table_for_offset(*id) {
+                    return Ok(TExpr {
+                        tag: TExprTag::Ident {
+                            stack_offset: offset,
+                        },
+                        type_: *self.search_symbol_table(*id).unwrap(),
+                    });
+                } else {
+                    return Err(Error {
+                        location: expr.view,
+                        message: "identifier not found",
+                    });
+                }
+            }
             ExprTag::Add(l, r) => {
                 let le = self.check_expr(l)?;
                 let re = self.check_expr(r)?;
@@ -269,6 +284,15 @@ where
         } else {
             return None;
         }
+    }
+
+    fn search_symbol_table_for_offset(&self, id: u32) -> Option<i32> {
+        for symbol_table in self.symbol_tables.iter().rev() {
+            if symbol_table.symbol_offsets.contains_key(&id) {
+                return Some(symbol_table.symbol_offsets[&id]);
+            }
+        }
+        return None;
     }
 
     fn search_symbol_table(&self, id: u32) -> Option<&'b Type<'b>> {
