@@ -137,13 +137,7 @@ where
                     }
 
                     let expr = if *decl_type == Type::Float && expr.type_ == Type::Int {
-                        self.buckets.add(TExpr {
-                            tag: TExprTag::Call {
-                                callee: FLOAT_IDX,
-                                arguments: ref_to_slice(expr),
-                            },
-                            type_: Type::Float,
-                        })
+                        self.cast_to_float(expr)
                     } else {
                         expr
                     };
@@ -199,22 +193,10 @@ where
 
                 if le.type_ == Type::Float || re.type_ == Type::Float {
                     if re.type_ == Type::Int {
-                        re = self.buckets.add(TExpr {
-                            tag: TExprTag::Call {
-                                callee: FLOAT_IDX,
-                                arguments: ref_to_slice(re),
-                            },
-                            type_: Type::Float,
-                        });
+                        re = self.cast_to_float(re);
                     }
                     if le.type_ == Type::Int {
-                        le = self.buckets.add(TExpr {
-                            tag: TExprTag::Call {
-                                callee: FLOAT_IDX,
-                                arguments: ref_to_slice(le),
-                            },
-                            type_: Type::Float,
-                        });
+                        le = self.cast_to_float(le);
                     }
                     return Ok(TExpr {
                         tag: TExprTag::Add(le, re),
@@ -275,6 +257,16 @@ where
             Type::Any => true,
             x => x == value,
         };
+    }
+
+    fn cast_to_float(&mut self, value: &'b TExpr<'b>) -> &'b mut TExpr<'b> {
+        return self.buckets.add(TExpr {
+            tag: TExprTag::Call {
+                callee: FLOAT_IDX,
+                arguments: ref_to_slice(value),
+            },
+            type_: Type::Float,
+        });
     }
 
     fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b Type<'b>, offset: i32) {
