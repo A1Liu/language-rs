@@ -144,7 +144,7 @@ where
                     }
                     return Ok(Stmt::Assign {
                         to: *id,
-                        to_loc: expr.view.start,
+                        to_view: expr.view,
                         value,
                     });
                 }

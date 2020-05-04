@@ -50,7 +50,7 @@ pub enum Stmt<'a> {
     },
     Assign {
         to: u32,
-        to_loc: u32,
+        to_view: CRange,
         value: &'a mut Expr<'a>,
     },
     AssignMember {

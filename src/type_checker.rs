@@ -53,6 +53,10 @@ pub enum TStmt<'a> {
         decl_type: &'a Type<'a>,
         value: &'a TExpr<'a>,
     },
+    Assign {
+        stack_offset: i32,
+        value: &'a TExpr<'a>,
+    },
 }
 
 pub struct SymbolTable<'a, 'b>
@@ -132,7 +136,7 @@ where
                     if !Self::is_assignment_compatible(decl_type, &expr.type_) {
                         return Err(Error {
                             location: value.view,
-                            message: "argument is wrong type",
+                            message: "value type doesn't match variable type",
                         });
                     }
 
@@ -148,6 +152,40 @@ where
                         value: expr,
                     });
                     current_offset += 1;
+                }
+                Stmt::Assign { to, to_view, value } => {
+                    let id_type;
+                    if let Some(type_) = self.search_symbol_table(*to) {
+                        id_type = type_;
+                    } else {
+                        return Err(Error {
+                            location: *to_view,
+                            message: "name being assigned to doesn't exist",
+                        });
+                    }
+
+                    let expr = self.check_expr(value)?;
+                    let expr = self.buckets.add(expr);
+
+                    if !Self::is_assignment_compatible(id_type, &expr.type_) {
+                        return Err(Error {
+                            location: value.view,
+                            message: "value type doesn't match variable type",
+                        });
+                    }
+
+                    let expr = if *id_type == Type::Float && expr.type_ == Type::Int {
+                        self.cast_to_float(expr)
+                    } else {
+                        expr
+                    };
+
+                    let stack_offset = self.search_symbol_table_for_offset(*to).unwrap();
+                    println!("{}", stack_offset);
+                    tstmts.push(TStmt::Assign {
+                        stack_offset,
+                        value: expr,
+                    });
                 }
                 _ => panic!(),
             }
@@ -299,8 +337,8 @@ where
 
     fn search_symbol_table_for_offset(&self, id: u32) -> Option<i32> {
         for symbol_table in self.symbol_tables.iter().rev() {
-            if symbol_table.symbol_offsets.contains_key(&id) {
-                return Some(symbol_table.symbol_offsets[&id]);
+            if let Some(offset) = symbol_table.symbol_offsets.get(&id) {
+                return Some(*offset);
             }
         }
         return None;

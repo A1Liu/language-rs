@@ -25,6 +25,15 @@ pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
                 });
                 decl_index += 1;
             }
+            TStmt::Assign {
+                stack_offset,
+                value,
+            } => {
+                convert_expression_to_ops(&mut ops, value);
+                ops.push(Opcode::SetLocal {
+                    stack_offset: *stack_offset,
+                });
+            }
         }
     }
 
