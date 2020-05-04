@@ -140,12 +140,6 @@ where
                         });
                     }
 
-                    let expr = if *decl_type == Type::Float && expr.type_ == Type::Int {
-                        self.cast_to_float(expr)
-                    } else {
-                        expr
-                    };
-
                     self.symbol_scope_add(*name, decl_type, current_offset);
                     tstmts.push(TStmt::Declare {
                         decl_type,
@@ -229,22 +223,17 @@ where
                 let mut le = self.buckets.add(le);
                 let mut re = self.buckets.add(re);
 
-                if le.type_ == Type::Float || re.type_ == Type::Float {
-                    if re.type_ == Type::Int {
-                        re = self.cast_to_float(re);
-                    }
-                    if le.type_ == Type::Int {
-                        le = self.cast_to_float(le);
-                    }
+                if le.type_ == re.type_ {
                     return Ok(TExpr {
                         tag: TExprTag::Add(le, re),
                         type_: Type::Float,
                     });
+                } else {
+                    return Err(Error {
+                        location: expr.view,
+                        message: "incompatible types for addition",
+                    });
                 }
-                return Ok(TExpr {
-                    tag: TExprTag::Add(le, re),
-                    type_: Type::Int,
-                });
             }
             ExprTag::Call { callee, arguments } => {
                 if let Some(Type::Function {
@@ -289,10 +278,15 @@ where
     }
 
     fn is_assignment_compatible(to: &Type<'b>, value: &Type<'b>) -> bool {
+        match value {
+            Type::None => return true,
+            _ => {}
+        }
+
         return match to {
             Type::Unknown => panic!(),
-            Type::Float => *value == Type::Float || *value == Type::Int,
             Type::Any => true,
+            Type::None => false,
             x => x == value,
         };
     }

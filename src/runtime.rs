@@ -16,14 +16,14 @@ pub enum Opcode {
     Pop,
     GetLocal { stack_offset: i32 },
     SetLocal { stack_offset: i32 },
-    Call(u32),
+    ECall,
 }
 
 pub const INT_TYPE: u64 = 0;
 pub const FLOAT_TYPE: u64 = 1;
 
-pub const PRINT_FUNC: u32 = 0;
-pub const FLOAT_CONSTRUCTOR: u32 = 1;
+pub const PRINT: u64 = 0;
+pub const FLOAT_CAST: u64 = 1;
 
 impl<'a> Runtime<'a> {
     pub fn new(code: &'a Vec<Vec<Opcode>>) -> Self {
@@ -77,15 +77,6 @@ impl<'a> Runtime<'a> {
             Pop => {
                 self.stack.pop();
             }
-            Call(func_id) => match func_id {
-                PRINT_FUNC => {
-                    self.print_func();
-                }
-                FLOAT_CONSTRUCTOR => {
-                    self.float_constructor();
-                }
-                x => {}
-            },
             GetLocal { stack_offset } => {
                 self.stack
                     .push(self.stack[self.fp.wrapping_add(stack_offset as usize)]);
@@ -96,47 +87,16 @@ impl<'a> Runtime<'a> {
             PushNone => {
                 self.stack.push(!0);
             }
+            ECall => match self.heap[self.stack.pop().unwrap()] {
+                PRINT => {
+                    println!("print primitive ecall");
+                }
+                _ => {
+                    println!("invalid ecall");
+                    panic!();
+                }
+            },
         }
         // println!(":{}", self.stack.len());
-    }
-
-    pub fn print_func(&mut self) {
-        let arg = self.stack.pop().unwrap();
-        let type_id = self.heap[arg - 1];
-        let arg_value = self.heap[arg];
-
-        match type_id {
-            INT_TYPE => {
-                println!("{}", arg_value as i64);
-            }
-            FLOAT_TYPE => {
-                println!("{}", f64::from_bits(arg_value));
-            }
-            x => {
-                println!("{}", x);
-                panic!();
-            }
-        }
-    }
-
-    pub fn float_constructor(&mut self) {
-        let arg = self.stack.pop().unwrap();
-        let type_id = self.heap[arg - 1];
-        let arg_value = self.heap[arg];
-
-        self.heap.push(FLOAT_TYPE);
-        let ret_val = self.heap.len();
-
-        match type_id {
-            INT_TYPE => {
-                self.heap.push((arg_value as i64 as f64).to_bits());
-            }
-            FLOAT_TYPE => {
-                self.heap.push(arg_value);
-            }
-            _ => panic!(),
-        }
-
-        *self.stack.last_mut().unwrap() = ret_val;
     }
 }

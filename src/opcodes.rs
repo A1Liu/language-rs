@@ -76,12 +76,13 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
         }
         TExprTag::Call { callee, arguments } => {
             ops.push(Opcode::PushNone);
-            for arg in arguments.iter() {
+            for arg in arguments.iter().rev() {
                 convert_expression_to_ops(ops, arg);
             }
             match *callee {
-                PRINT_IDX => ops.push(Opcode::Call(PRINT_FUNC)),
-                FLOAT_IDX => ops.push(Opcode::Call(FLOAT_CONSTRUCTOR)),
+                ECALL_IDX => {
+                    ops.push(Opcode::ECall);
+                }
                 _ => panic!(),
             }
         }
