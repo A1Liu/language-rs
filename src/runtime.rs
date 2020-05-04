@@ -1,7 +1,8 @@
-pub struct Runtime {
+pub struct Runtime<'a> {
     pub stack: Vec<usize>,
     pub heap: Vec<u64>,
     pub fp_stack: Vec<usize>,
+    pub code: &'a Vec<Vec<Opcode>>,
     pub fp: usize,
 }
 
@@ -24,14 +25,22 @@ pub const FLOAT_TYPE: u64 = 1;
 pub const PRINT_FUNC: u32 = 0;
 pub const FLOAT_CONSTRUCTOR: u32 = 1;
 
-impl Runtime {
-    pub fn new() -> Self {
+impl<'a> Runtime<'a> {
+    pub fn new(code: &'a Vec<Vec<Opcode>>) -> Self {
         return Self {
             stack: Vec::new(), // dummy frame pointer value
             heap: Vec::new(),
             fp_stack: Vec::new(),
+            code,
             fp: 0,
         };
+    }
+
+    pub fn run(&mut self) {
+        let main = &self.code[0];
+        for op in main {
+            self.run_op(*op);
+        }
     }
 
     pub fn run_op(&mut self, op: Opcode) {

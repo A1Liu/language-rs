@@ -64,12 +64,10 @@ fn run_on_string<'b>(
 
     println!("{:?}", program);
 
-    let ops = opcodes::convert_stmts_to_ops(program);
+    let ops = opcodes::convert_program_to_ops(program);
     println!("{:?}", ops);
-    let mut run = runtime::Runtime::new();
-    for op in ops {
-        run.run_op(op);
-    }
+    let mut run = runtime::Runtime::new(&ops);
+    run.run();
 
     return Ok(());
 }

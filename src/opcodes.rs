@@ -2,8 +2,20 @@ use crate::builtins::*;
 use crate::runtime::*;
 use crate::type_checker::*;
 
-pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
+pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Vec<Opcode>> {
+    let mut functions = Vec::new();
+    convert_stmts_to_ops(0, &mut functions, stmts);
+    return functions;
+}
+
+pub fn convert_stmts_to_ops(
+    function_index: usize,
+    functions: &mut Vec<Vec<Opcode>>,
+    stmts: &[TStmt],
+) {
     let mut ops = Vec::new();
+
+    functions.push(Vec::new());
 
     for stmt in stmts {
         if let TStmt::Declare { decl_type, value } = stmt {
@@ -37,7 +49,7 @@ pub fn convert_stmts_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
         }
     }
 
-    return ops;
+    functions[function_index] = ops;
 }
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
