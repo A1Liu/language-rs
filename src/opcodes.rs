@@ -1,25 +1,41 @@
-use crate::builtins::*;
 use crate::runtime::*;
 use crate::type_checker::*;
+use std::collections::HashMap;
 
-pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Vec<Opcode>> {
-    let mut functions = Vec::new();
-    convert_stmts_to_ops(0, &mut functions, stmts);
-    return functions;
+pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
+    let mut functions = convert_stmts_to_ops(0, stmts);
+    let mut program = functions.remove(&0).unwrap();
+    let mut function_translations = HashMap::new();
+
+    for (id, mut stmts) in functions.drain() {
+        function_translations.insert(id, program.len() as u32);
+        program.append(&mut stmts);
+    }
+
+    for op in &mut program {
+        match op {
+            Opcode::Call(func) => *func = function_translations[func],
+            _ => {}
+        }
+    }
+
+    return program;
 }
 
-pub fn convert_stmts_to_ops(
-    function_index: usize,
-    functions: &mut Vec<Vec<Opcode>>,
-    stmts: &[TStmt],
-) {
+pub fn convert_stmts_to_ops(function_index: u32, stmts: &[TStmt]) -> HashMap<u32, Vec<Opcode>> {
+    let mut functions = HashMap::new();
     let mut ops = Vec::new();
-
-    functions.push(Vec::new());
-
     for stmt in stmts {
         if let TStmt::Declare { decl_type, value } = stmt {
             ops.push(Opcode::PushNone);
+        } else if let TStmt::Function {
+            uid,
+            return_type,
+            arguments,
+            stmts,
+        } = stmt
+        {
+            functions.insert(*uid, Vec::new());
         }
     }
 
@@ -46,10 +62,22 @@ pub fn convert_stmts_to_ops(
                     stack_offset: *stack_offset,
                 });
             }
+            TStmt::Function {
+                uid,
+                return_type,
+                arguments,
+                stmts,
+            } => {
+                for (f, stmts) in convert_stmts_to_ops(*uid, stmts).drain() {
+                    functions.insert(f, stmts);
+                }
+            }
+            _ => panic!(),
         }
     }
-
-    functions[function_index] = ops;
+    ops.push(Opcode::Return);
+    functions.insert(function_index, ops);
+    return functions;
 }
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
@@ -79,12 +107,13 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
             for arg in arguments.iter().rev() {
                 convert_expression_to_ops(ops, arg);
             }
-            match *callee {
-                ECALL_IDX => {
-                    ops.push(Opcode::ECall);
-                }
-                _ => panic!(),
+            ops.push(Opcode::Call(*callee));
+        }
+        TExprTag::ECall { arguments } => {
+            for arg in arguments.iter().rev() {
+                convert_expression_to_ops(ops, arg);
             }
+            ops.push(Opcode::ECall);
         }
     }
 }

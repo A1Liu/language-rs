@@ -1,1 +1,3 @@
-ecall(0, 1)
+hello: int = 1
+
+print(hello)

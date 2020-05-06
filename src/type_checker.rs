@@ -2,7 +2,6 @@ use crate::builtins::*;
 use crate::syntax_tree::*;
 use crate::util::*;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Type<'a> {
@@ -38,6 +37,9 @@ pub enum TExprTag<'a> {
         callee: u32,
         arguments: &'a [TExpr<'a>],
     },
+    ECall {
+        arguments: &'a [TExpr<'a>],
+    },
 }
 
 #[derive(Debug)]
@@ -57,23 +59,50 @@ pub enum TStmt<'a> {
         stack_offset: i32,
         value: &'a TExpr<'a>,
     },
+    Function {
+        uid: u32,
+        return_type: &'a Type<'a>,
+        arguments: &'a [Type<'a>],
+        stmts: &'a [TStmt<'a>],
+    },
 }
 
-pub struct SymbolTable<'a, 'b>
-where
-    'b: 'a,
-{
-    pub symbol_types: HashMap<u32, &'b Type<'b>>,
-    pub symbol_offsets: HashMap<u32, i32>,
-    phantom: PhantomData<&'a u8>,
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SymbolInfo<'a> {
+    Function {
+        uid: u32,
+        return_type: &'a Type<'a>,
+        arguments: &'a [Type<'a>],
+    },
+    Variable {
+        offset: i32,
+        type_: &'a Type<'a>,
+    },
+}
+
+impl<'a> SymbolInfo<'a> {
+    pub fn get_type(&self) -> Type<'a> {
+        return match self {
+            SymbolInfo::Function {
+                uid,
+                return_type,
+                arguments,
+            } => Type::Function {
+                return_type,
+                arguments,
+            },
+            SymbolInfo::Variable { offset, type_ } => **type_,
+        };
+    }
 }
 
 pub struct TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
+    next_uid: u32,
     buckets: &'a mut Buckets<'b>,
-    symbol_tables: Vec<SymbolTable<'a, 'b>>,
+    symbol_tables: Vec<HashMap<u32, SymbolInfo<'b>>>,
     types: HashMap<u32, &'b Type<'b>>,
 }
 
@@ -82,21 +111,32 @@ where
     'b: 'a,
 {
     pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
-        let type_table = builtin_types(buckets);
-        let symbol_table = builtin_symbols(buckets);
         return Self {
+            next_uid: 0,
             buckets,
-            symbol_tables: vec![SymbolTable {
-                symbol_types: symbol_table,
-                symbol_offsets: HashMap::new(),
-                phantom: PhantomData,
-            }],
-            types: type_table,
+            symbol_tables: Vec::new(),
+            types: HashMap::new(),
         };
     }
 
-    pub fn check_stmts(&mut self, stmts: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
-        let mut tstmts = Vec::new();
+    pub fn check_program(&mut self, program: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
+        let type_table = builtin_types(self.buckets);
+        let symbol_table = builtin_symbols(self.buckets);
+        self.symbol_tables = vec![symbol_table];
+        self.types = type_table;
+        self.next_uid = self.symbol_tables.len() as u32 + 1;
+
+        let mut tstmts = builtin_definitions(self.buckets);
+
+        self.check_stmts(program, &mut tstmts)?;
+        return Ok(self.buckets.add_array(tstmts));
+    }
+
+    fn check_stmts(
+        &mut self,
+        stmts: &[Stmt],
+        tstmts: &mut Vec<TStmt<'b>>,
+    ) -> Result<(), Error<'b>> {
         let mut current_offset = 0;
         for stmt in stmts {
             match stmt {
@@ -140,7 +180,13 @@ where
                         });
                     }
 
-                    self.symbol_scope_add(*name, decl_type, current_offset);
+                    self.symbol_scope_add(
+                        *name,
+                        SymbolInfo::Variable {
+                            type_: decl_type,
+                            offset: current_offset,
+                        },
+                    );
                     tstmts.push(TStmt::Declare {
                         decl_type,
                         value: expr,
@@ -148,36 +194,38 @@ where
                     current_offset += 1;
                 }
                 Stmt::Assign { to, to_view, value } => {
-                    let id_type;
-                    if let Some(type_) = self.search_symbol_table(*to) {
-                        id_type = type_;
+                    let to_type;
+                    let to_offset;
+                    if let Some(SymbolInfo::Variable { offset, type_ }) =
+                        self.search_symbol_table(*to)
+                    {
+                        to_type = *type_;
+                        to_offset = offset;
                     } else {
                         return Err(Error {
                             location: *to_view,
-                            message: "name being assigned to doesn't exist",
+                            message: "name being assigned to doesn't exist or is function",
                         });
                     }
 
                     let expr = self.check_expr(value)?;
                     let expr = self.buckets.add(expr);
 
-                    if !Self::is_assignment_compatible(id_type, &expr.type_) {
+                    if !Self::is_assignment_compatible(&to_type, &expr.type_) {
                         return Err(Error {
                             location: value.view,
                             message: "value type doesn't match variable type",
                         });
                     }
 
-                    let expr = if *id_type == Type::Float && expr.type_ == Type::Int {
+                    let expr = if to_type == Type::Float && expr.type_ == Type::Int {
                         self.cast_to_float(expr)
                     } else {
                         expr
                     };
 
-                    let stack_offset = self.search_symbol_table_for_offset(*to).unwrap();
-                    println!("{}", stack_offset);
                     tstmts.push(TStmt::Assign {
-                        stack_offset,
+                        stack_offset: to_offset,
                         value: expr,
                     });
                 }
@@ -185,7 +233,7 @@ where
             }
         }
 
-        return Ok(self.buckets.add_array(tstmts));
+        return Ok(());
     }
 
     pub fn check_expr(&mut self, expr: &Expr) -> Result<TExpr<'b>, Error<'b>> {
@@ -203,25 +251,31 @@ where
                 });
             }
             ExprTag::Ident { id } => {
-                if let Some(offset) = self.search_symbol_table_for_offset(*id) {
-                    return Ok(TExpr {
-                        tag: TExprTag::Ident {
-                            stack_offset: offset,
-                        },
-                        type_: *self.search_symbol_table(*id).unwrap(),
-                    });
-                } else {
-                    return Err(Error {
-                        location: expr.view,
-                        message: "identifier not found",
-                    });
-                }
+                let (offset, type_) = match self.search_symbol_table(*id) {
+                    Some(SymbolInfo::Variable { offset, type_ }) => (offset, type_),
+                    Some(SymbolInfo::Function { .. }) => {
+                        panic!("we don't have function objects yet")
+                    }
+                    None => {
+                        return Err(Error {
+                            location: expr.view,
+                            message: "identifier not found",
+                        })
+                    }
+                };
+
+                return Ok(TExpr {
+                    tag: TExprTag::Ident {
+                        stack_offset: offset,
+                    },
+                    type_: *type_,
+                });
             }
             ExprTag::Add(l, r) => {
                 let le = self.check_expr(l)?;
                 let re = self.check_expr(r)?;
-                let mut le = self.buckets.add(le);
-                let mut re = self.buckets.add(re);
+                let le = self.buckets.add(le);
+                let re = self.buckets.add(re);
 
                 if le.type_ == re.type_ {
                     return Ok(TExpr {
@@ -236,7 +290,8 @@ where
                 }
             }
             ExprTag::Call { callee, arguments } => {
-                if let Some(Type::Function {
+                if let Some(SymbolInfo::Function {
+                    uid,
                     return_type,
                     arguments: args_formal,
                 }) = self.search_symbol_table(*callee)
@@ -256,10 +311,10 @@ where
 
                     return Ok(TExpr {
                         tag: TExprTag::Call {
-                            callee: *callee,
+                            callee: uid,
                             arguments: self.buckets.add_array(args),
                         },
-                        type_: **return_type,
+                        type_: *return_type,
                     });
                 } else {
                     return Err(Error {
@@ -301,47 +356,29 @@ where
         });
     }
 
-    fn symbol_scope_add(&mut self, id: u32, symbol_type: &'b Type<'b>, offset: i32) {
+    fn symbol_scope_add(&mut self, id: u32, info: SymbolInfo<'b>) {
         let sym = self.symbol_tables.last_mut().unwrap();
-        sym.symbol_types.insert(id, symbol_type);
-        sym.symbol_offsets.insert(id, offset);
+        sym.insert(id, info);
     }
 
     fn symbol_scope_contains(&self, id: u32) -> bool {
         let sym = self.symbol_tables.last().unwrap();
-        return sym.symbol_types.contains_key(&id);
+        return sym.contains_key(&id);
     }
 
-    fn search_symbol_scope(&self, id: u32) -> Option<&'b Type<'b>> {
+    fn search_symbol_scope(&self, id: u32) -> Option<SymbolInfo<'b>> {
         let sym = self.symbol_tables.last().unwrap();
-        if sym.symbol_types.contains_key(&id) {
-            return Some(sym.symbol_types[&id]);
-        } else {
-            return None;
-        }
-    }
-    fn search_symbol_scope_for_offset(&self, id: u32) -> Option<i32> {
-        let sym = self.symbol_tables.last().unwrap();
-        if sym.symbol_types.contains_key(&id) {
-            return Some(sym.symbol_offsets[&id]);
+        if sym.contains_key(&id) {
+            return Some(sym[&id]);
         } else {
             return None;
         }
     }
 
-    fn search_symbol_table_for_offset(&self, id: u32) -> Option<i32> {
+    fn search_symbol_table(&self, id: u32) -> Option<SymbolInfo<'b>> {
         for symbol_table in self.symbol_tables.iter().rev() {
-            if let Some(offset) = symbol_table.symbol_offsets.get(&id) {
-                return Some(*offset);
-            }
-        }
-        return None;
-    }
-
-    fn search_symbol_table(&self, id: u32) -> Option<&'b Type<'b>> {
-        for symbol_table in self.symbol_tables.iter().rev() {
-            if symbol_table.symbol_types.contains_key(&id) {
-                return Some(symbol_table.symbol_types[&id]);
+            if symbol_table.contains_key(&id) {
+                return Some(symbol_table[&id]);
             }
         }
         return None;

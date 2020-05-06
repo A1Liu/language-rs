@@ -1,13 +1,14 @@
-use crate::type_checker::Type;
+use crate::runtime::*;
+use crate::type_checker::*;
 use crate::util::Buckets;
 use std::collections::HashMap;
 
-pub const ECALL_IDX: u32 = 0;
+pub const PRINT_IDX: u32 = 0;
 pub const FLOAT_IDX: u32 = 1;
 pub const INT_IDX: u32 = 2;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
-    let names = vec!["ecall", "float", "int"];
+    let names = vec!["print", "float", "int"];
     let mut names_map = HashMap::new();
     for (idx, name) in names.iter().enumerate() {
         names_map.insert(*name, idx as u32);
@@ -16,17 +17,59 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     return (names, names_map);
 }
 
-pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a Type<'a>> {
+pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, SymbolInfo<'a>> {
     let mut map = HashMap::new();
-    let int_arg = &*buckets.add_array(vec![Type::Int, Type::Any]);
-    let none = &*buckets.add(Type::None);
-    let ecall_type = &*buckets.add(Type::Function {
-        return_type: none,
-        arguments: int_arg,
+    let none_type = &*buckets.add(Type::None);
+    let any_arg = &*buckets.add_array(vec![Type::Int]);
+    let print_type = &*buckets.add(Type::Function {
+        return_type: none_type,
+        arguments: any_arg,
+    });
+    map.insert(
+        PRINT_IDX,
+        SymbolInfo::Function {
+            uid: 1,
+            return_type: none_type,
+            arguments: any_arg,
+        },
+    );
+    return map;
+}
+
+pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a>> {
+    let mut defns = Vec::new();
+
+    let none_type = buckets.add(Type::None);
+    let int_type = buckets.add(Type::Int);
+    let any_arg = buckets.add_array(vec![Type::Int]);
+
+    let ecall_args = buckets.add_array(vec![
+        TExpr {
+            tag: TExprTag::Int(PRINT_PRIMITIVE as i64),
+            type_: Type::Int,
+        },
+        TExpr {
+            tag: TExprTag::Ident { stack_offset: -1 },
+            type_: Type::Int,
+        },
+    ]);
+
+    let ecall_expr = buckets.add(TExpr {
+        tag: TExprTag::ECall {
+            arguments: ecall_args,
+        },
+        type_: Type::None,
     });
 
-    map.insert(ECALL_IDX, ecall_type);
-    return map;
+    let stmts = buckets.add_array(vec![TStmt::Expr(ecall_expr)]);
+
+    defns.push(TStmt::Function {
+        uid: 1,
+        return_type: none_type,
+        arguments: any_arg,
+        stmts,
+    });
+    return defns;
 }
 
 pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a Type<'a>> {

@@ -50,7 +50,7 @@ fn run_on_string<'b>(
     };
 
     let mut t = type_checker::TypeChecker::new(buckets);
-    let program = match t.check_stmts(program) {
+    let program = match t.check_program(program) {
         Ok(p) => p,
         Err(e) => {
             return Err(Diagnostic::error()
@@ -66,8 +66,8 @@ fn run_on_string<'b>(
 
     let ops = opcodes::convert_program_to_ops(program);
     println!("{:?}", ops);
-    let mut run = runtime::Runtime::new(&ops);
-    run.run();
+    let mut run = runtime::Runtime::new();
+    run.run(&ops);
 
     return Ok(());
 }
