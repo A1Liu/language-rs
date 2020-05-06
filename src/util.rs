@@ -52,6 +52,18 @@ pub struct Error<'a> {
     pub message: &'a str,
 }
 
+pub fn unwrap_err<'a, T>(
+    value: Option<T>,
+    location: CRange,
+    message: &'a str,
+) -> Result<T, Error<'a>> {
+    if let Some(val) = value {
+        return Ok(val);
+    } else {
+        return Err(Error { location, message });
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Bucket {
     begin: *mut u8,

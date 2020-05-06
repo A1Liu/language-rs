@@ -139,51 +139,28 @@ where
 
                     let decl_return_type;
                     if let Some(return_type) = return_type {
-                        if let Some(t) = self.types.get(return_type) {
-                            decl_return_type = **t;
-                        } else {
-                            return Err(Error {
-                                location: *return_type_view,
-                                message: "type doesn't exist",
-                            });
-                        }
+                        decl_return_type = **unwrap_err(
+                            self.types.get(return_type),
+                            *return_type_view,
+                            "type_doesn't exist",
+                        )?;
                     } else {
                         decl_return_type = Type::None;
                     }
 
                     let decl_return_type = self.buckets.add(decl_return_type);
 
-                    let mut scope = HashMap::new();
                     let mut arg_types = Vec::new();
                     let mut offset = -1;
                     for arg in arguments.iter() {
                         let arg_type;
-                        if let Some(t) = self.types.get(&arg.type_name) {
-                            arg_type = **t;
-                        } else {
-                            return Err(Error {
-                                location: arg.view,
-                                message: "type doesn't exist",
-                            });
-                        }
-
-                        if scope.contains_key(&arg.name) {
-                            return Err(Error {
-                                location: arg.view,
-                                message: "argument name already defined",
-                            });
-                        }
+                        arg_type = **unwrap_err(
+                            self.types.get(&arg.type_name),
+                            arg.view,
+                            "type doesn't exist",
+                        )?;
 
                         arg_types.push(arg_type);
-                        let arg_type = self.buckets.add(arg_type);
-                        scope.insert(
-                            *name,
-                            SymbolInfo::Variable {
-                                type_: arg_type,
-                                offset,
-                            },
-                        );
-                        offset -= 1;
                     }
 
                     let arg_types = self.buckets.add_array(arg_types);
@@ -221,6 +198,7 @@ where
         stmts: &[Stmt],
         tstmts: &mut Vec<TStmt<'b>>,
     ) -> Result<(), Error<'b>> {
+        self.add_function_symbols(stmts);
         let mut current_offset = 0;
         for stmt in stmts {
             match stmt {
@@ -244,15 +222,8 @@ where
                         });
                     }
 
-                    let decl_type;
-                    if let Some(decl) = self.types.get(type_name) {
-                        decl_type = *decl;
-                    } else {
-                        return Err(Error {
-                            location: *type_view,
-                            message: "type doesn't exist",
-                        });
-                    }
+                    let decl_type =
+                        *unwrap_err(self.types.get(type_name), *type_view, "type doesn't exist")?;
 
                     let expr = self.check_expr(value)?;
                     let expr = self.buckets.add(expr);
@@ -271,6 +242,7 @@ where
                             offset: current_offset,
                         },
                     );
+
                     tstmts.push(TStmt::Declare {
                         decl_type,
                         value: expr,
@@ -278,17 +250,21 @@ where
                     current_offset += 1;
                 }
                 Stmt::Assign { to, to_view, value } => {
+                    let var_info = unwrap_err(
+                        self.search_symbol_table(*to),
+                        *to_view,
+                        "name being assigned to doesn't exist",
+                    )?;
+
                     let to_type;
                     let to_offset;
-                    if let Some(SymbolInfo::Variable { offset, type_ }) =
-                        self.search_symbol_table(*to)
-                    {
+                    if let SymbolInfo::Variable { offset, type_ } = var_info {
                         to_type = *type_;
                         to_offset = offset;
                     } else {
                         return Err(Error {
                             location: *to_view,
-                            message: "name being assigned to doesn't exist or is function",
+                            message: "name being assigned to is function",
                         });
                     }
 
@@ -313,15 +289,64 @@ where
                         value: expr,
                     });
                 }
-                // Stmt::Function {
-                //     name,
-                //     name_view,
-                //     arguments,
-                //     return_type_view,
-                //     return_type,
-                //     stmts,
-                // } => {
-                // }
+                Stmt::Function {
+                    name,
+                    name_view,
+                    return_type_view,
+                    arguments,
+                    return_type,
+                    stmts,
+                } => {
+                    let uid;
+                    let return_type;
+                    let arg_types;
+                    if let SymbolInfo::Function {
+                        uid: id,
+                        return_type: rtype,
+                        arguments,
+                    } = self.search_symbol_table(*name).unwrap()
+                    {
+                        uid = id;
+                        return_type = rtype;
+                        arg_types = arguments;
+                    } else {
+                        panic!();
+                    }
+
+                    let mut scope = HashMap::new();
+
+                    let mut offset = -1;
+                    for (arg, arg_type) in arguments.iter().zip(arg_types) {
+                        if scope.contains_key(&arg.name) {
+                            return Err(Error {
+                                location: arg.view,
+                                message: "argument name already defined",
+                            });
+                        }
+
+                        scope.insert(
+                            arg.name,
+                            SymbolInfo::Variable {
+                                type_: arg_type,
+                                offset,
+                            },
+                        );
+                        offset -= 1;
+                    }
+
+                    self.symbol_tables.push(scope);
+                    let mut fstmts = Vec::new();
+                    self.check_stmts(stmts, &mut fstmts);
+                    self.symbol_tables.pop();
+
+                    let fstmts = self.buckets.add(fstmts);
+                    tstmts.push(TStmt::Function {
+                        uid,
+                        arguments: arg_types,
+                        return_type,
+                        stmts: fstmts,
+                    });
+                }
                 _ => panic!(),
             }
         }
@@ -344,17 +369,15 @@ where
                 });
             }
             ExprTag::Ident { id } => {
-                let (offset, type_) = match self.search_symbol_table(*id) {
-                    Some(SymbolInfo::Variable { offset, type_ }) => (offset, type_),
-                    Some(SymbolInfo::Function { .. }) => {
-                        panic!("we don't have function objects yet")
-                    }
-                    None => {
-                        return Err(Error {
-                            location: expr.view,
-                            message: "identifier not found",
-                        })
-                    }
+                let var_info = unwrap_err(
+                    self.search_symbol_table(*id),
+                    expr.view,
+                    "referenced name doesn't exist",
+                )?;
+
+                let (offset, type_) = match var_info {
+                    SymbolInfo::Variable { offset, type_ } => (offset, type_),
+                    SymbolInfo::Function { .. } => panic!("we don't have function objects yet"),
                 };
 
                 return Ok(TExpr {
@@ -383,13 +406,26 @@ where
                 }
             }
             ExprTag::Call { callee, arguments } => {
-                if let Some(SymbolInfo::Function {
+                let var_info = unwrap_err(
+                    self.search_symbol_table(*callee),
+                    expr.view,
+                    "name being called doesn't exist",
+                )?;
+
+                if let SymbolInfo::Function {
                     uid,
                     return_type,
                     arguments: args_formal,
-                }) = self.search_symbol_table(*callee)
+                } = var_info
                 {
                     let mut args = Vec::new();
+                    if args_formal.len() != arguments.len() {
+                        return Err(Error {
+                            location: expr.view,
+                            message: "wrong number of arguments",
+                        });
+                    }
+
                     for (formal, arg) in args_formal.iter().zip(arguments.iter()) {
                         let (start, end) = (arg.view.start, arg.view.end);
                         let arg = self.check_expr(arg)?;
@@ -418,7 +454,7 @@ where
             }
             x => {
                 return Err(Error {
-                    location: newr(0, 0),
+                    location: expr.view,
                     message: "not implemented yet",
                 })
             }

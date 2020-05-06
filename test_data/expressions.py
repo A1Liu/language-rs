@@ -2,8 +2,16 @@ asdf: float = 12.0
 hello: float = 12.0
 meep: float = asdf + hello
 
-print(meep)
 
-meep = meep + 1.0
+def add(a1: float, a2: float, a3: float) -> float:
+    print(a2 + a2)
 
-print(meep)
+
+def hi(asdf: float) -> float:
+    print(asdf)
+    print(asdf)
+
+
+hi(12.0)
+
+add(12.0, 12.1, 12.2)

@@ -72,7 +72,6 @@ pub fn convert_stmts_to_ops(function_index: u32, stmts: &[TStmt]) -> HashMap<u32
                     functions.insert(f, stmts);
                 }
             }
-            _ => panic!(),
         }
     }
     ops.push(Opcode::Return);
