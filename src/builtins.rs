@@ -20,7 +20,7 @@ pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
 pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, SymbolInfo<'a>> {
     let mut map = HashMap::new();
     let none_type = &*buckets.add(Type::None);
-    let any_arg = &*buckets.add_array(vec![Type::Int]);
+    let any_arg = &*buckets.add_array(vec![Type::Any]);
     let print_type = &*buckets.add(Type::Function {
         return_type: none_type,
         arguments: any_arg,
@@ -41,7 +41,7 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
 
     let none_type = buckets.add(Type::None);
     let int_type = buckets.add(Type::Int);
-    let any_arg = buckets.add_array(vec![Type::Int]);
+    let any_arg = buckets.add_array(vec![Type::Any]);
 
     let ecall_args = buckets.add_array(vec![
         TExpr {
@@ -50,7 +50,7 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
         },
         TExpr {
             tag: TExprTag::Ident { stack_offset: -1 },
-            type_: Type::Int,
+            type_: Type::Any,
         },
     ]);
 

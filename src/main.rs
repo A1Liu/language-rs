@@ -6,9 +6,9 @@ use std::fs::read_to_string;
 
 extern crate codespan_reporting;
 
+mod assembler;
 mod builtins;
 mod lexer;
-mod opcodes;
 mod parser;
 mod runtime;
 mod syntax_tree;
@@ -64,7 +64,7 @@ fn run_on_string<'b>(
 
     println!("{:?}", program);
 
-    let ops = opcodes::convert_program_to_ops(program);
+    let ops = assembler::convert_program_to_ops(program);
     println!("{:?}", ops);
     let mut run = runtime::Runtime::new();
     run.run(&ops);
