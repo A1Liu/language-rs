@@ -62,7 +62,7 @@ fn run_on_string<'b>(
         }
     };
 
-    println!("{:?}", program);
+    println!("{:?}\n", program);
 
     let ops = assembler::convert_program_to_ops(program);
     buckets.drop();

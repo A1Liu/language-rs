@@ -129,26 +129,30 @@ where
         let expr = self.buckets.add(expr);
         match self.pop() {
             Newline(loc2) => return Ok(Stmt::Expr(expr)),
-            Equal(_) => match &mut expr.tag {
-                ExprTag::Ident { id } => {
+            Equal(_) => match expr {
+                Expr::Ident { id, view } => {
                     let value = self.try_parse_expr()?;
                     let value = self.buckets.add(value);
                     match self.pop() {
                         Newline(_) => {}
                         x => {
                             return Err(Error {
-                                location: joinr(expr.view, x.view()),
+                                location: joinr(*view, x.view()),
                                 message: "statement needs to end in a newline",
                             })
                         }
                     }
                     return Ok(Stmt::Assign {
                         to: *id,
-                        to_view: expr.view,
+                        to_view: *view,
                         value,
                     });
                 }
-                ExprTag::DotAccess { parent, member_id } => {
+                Expr::DotAccess {
+                    parent,
+                    member_id,
+                    member_view,
+                } => {
                     let value = self.try_parse_expr()?;
                     let value = self.buckets.add(value);
                     return Ok(Stmt::AssignMember {
@@ -158,17 +162,17 @@ where
                     });
                 }
                 x => {
-                    return Err(Error {
-                        location: expr.view,
-                        message: "assignment can only happen to member accessors or names",
-                    })
+                    return err(
+                        x.view(),
+                        "assignment can only happen to member accessors or names",
+                    );
                 }
             },
             x => {
-                return Err(Error {
-                    location: joinr(expr.view, x.view()),
-                    message: "statement needs to end in a newline",
-                })
+                return err(
+                    joinr(expr.view(), x.view()),
+                    "statement needs to end in a newline",
+                );
             }
         }
     }
@@ -364,14 +368,11 @@ where
             match self.peek() {
                 Plus(loc) => {
                     self.pop();
-                    let op = self.buckets.add(expr);
-                    let op2 = self.try_parse_unary_postfix()?;
-                    let op2 = self.buckets.add(op2);
-                    let view = joinr(op.view, op2.view);
-                    expr = Expr {
-                        tag: ExprTag::Add(op, op2),
-                        view,
-                    };
+                    let left = self.buckets.add(expr);
+                    let right = self.try_parse_unary_postfix()?;
+                    let right = self.buckets.add(right);
+                    let view = joinr(left.view(), right.view());
+                    expr = Expr::Add { left, right, view };
                 }
                 _ => return Ok(expr),
             }
@@ -387,21 +388,16 @@ where
                 match self.pop() {
                     Token::Ident { id, view } => {
                         let parent = self.buckets.add(expr);
-                        let start = parent.view.start;
+                        let start = parent.view().start;
 
-                        expr = Expr {
-                            tag: ExprTag::DotAccess {
-                                parent,
-                                member_id: id,
-                            },
-                            view,
-                        }
+                        expr = Expr::DotAccess {
+                            parent,
+                            member_id: id,
+                            member_view: view,
+                        };
                     }
                     x => {
-                        return Err(Error {
-                            location: x.view(),
-                            message: "expected identifier after dot",
-                        })
+                        return err(x.view(), "expected identifier after dot");
                     }
                 }
             } else {
@@ -418,54 +414,49 @@ where
                 if let LParen(tup_begin) = self.peek() {
                     let arguments = self.try_parse_expr_tup()?;
                     let expr;
-                    if let Expr {
-                        tag: ExprTag::Tup(slice),
+                    if let Expr::Tup {
+                        values,
                         view: eview,
                     } = arguments
                     {
-                        expr = Expr {
-                            tag: ExprTag::Call {
-                                callee: id,
-                                arguments: slice,
-                            },
-                            view: joinr(view, eview),
+                        expr = Expr::Call {
+                            callee: id,
+                            callee_view: view,
+                            arguments: values,
+                            arguments_view: eview,
                         };
                     } else {
-                        let aview = arguments.view;
-                        expr = Expr {
-                            tag: ExprTag::Call {
-                                callee: id,
-                                arguments: self.buckets.add_array(vec![arguments]),
-                            },
-                            view: joinr(view, aview),
+                        let aview = arguments.view();
+                        expr = Expr::Call {
+                            callee: id,
+                            callee_view: view,
+                            arguments: self.buckets.add_array(vec![arguments]),
+                            arguments_view: aview,
                         };
                     }
                     return Ok(expr);
                 } else {
-                    return Ok(Expr {
-                        tag: ExprTag::Ident { id },
-                        view,
-                    });
+                    return Ok(Expr::Ident { id, view });
                 }
             }
             FloatingPoint { value, begin, end } => {
                 self.pop();
-                return Ok(Expr {
-                    tag: ExprTag::Float(value),
+                return Ok(Expr::Float {
+                    value,
                     view: newr(begin, end.get()),
                 });
             }
             Integer { value, begin, end } => {
                 self.pop();
-                return Ok(Expr {
-                    tag: ExprTag::Int(value),
+                return Ok(Expr::Int {
+                    value,
                     view: newr(begin, end.get()),
                 });
             }
             LParen(tup_begin) => {
                 let tup = self.try_parse_expr_tup()?;
-                let slice = match &tup.tag {
-                    ExprTag::Tup(slice) => slice,
+                let slice = match &tup {
+                    Expr::Tup { values, view } => values,
                     _ => panic!(),
                 };
 
@@ -476,10 +467,7 @@ where
                 }
             }
             x => {
-                return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token while parsing expression",
-                });
+                return err(x.view(), "unexpected token while parsing expression");
             }
         }
     }
@@ -494,8 +482,8 @@ where
         match self.peek() {
             RParen(tup_end) => {
                 self.pop();
-                return Ok(Expr {
-                    tag: ExprTag::Tup(self.buckets.add_array(Vec::new())),
+                return Ok(Expr::Tup {
+                    values: self.buckets.add_array(Vec::new()),
                     view: newr(tup_begin, tup_end + 1),
                 });
             }
@@ -524,16 +512,11 @@ where
 
         let tup_end = match tok {
             RParen(end) => end + 1,
-            _ => {
-                return Err(Error {
-                    location: tok.view(),
-                    message: "expected ')' character",
-                })
-            }
+            _ => return err(tok.view(), "expected ')' character"),
         };
 
-        return Ok(Expr {
-            tag: ExprTag::Tup(self.buckets.add_array(exprs)),
+        return Ok(Expr::Tup {
+            values: self.buckets.add_array(exprs),
             view: newr(tup_begin, tup_end),
         });
     }

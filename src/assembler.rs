@@ -1,5 +1,5 @@
 use crate::runtime::*;
-use crate::type_checker::*;
+use crate::syntax_tree::*;
 use std::collections::HashMap;
 
 pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
@@ -80,35 +80,40 @@ pub fn convert_stmts_to_ops(function_index: u32, stmts: &[TStmt]) -> HashMap<u32
 }
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, expr: &TExpr) {
-    match &expr.tag {
-        TExprTag::Ident { stack_offset } => {
+    match expr {
+        TExpr::Ident { stack_offset, .. } => {
             ops.push(Opcode::GetLocal {
                 stack_offset: *stack_offset,
             });
         }
-        TExprTag::Add(l, r) => {
-            convert_expression_to_ops(ops, l);
-            convert_expression_to_ops(ops, r);
-            if l.type_ == Type::Float {
+        TExpr::Add { left, right, type_ } => {
+            convert_expression_to_ops(ops, left);
+            convert_expression_to_ops(ops, right);
+            if *type_ == Type::Float {
                 ops.push(Opcode::AddFloat);
             } else {
                 ops.push(Opcode::AddInt);
             }
         }
-        TExprTag::Int(value) => {
+        TExpr::Int(value) => {
             ops.push(Opcode::MakeInt(*value as i64));
         }
-        TExprTag::Float(value) => {
+        TExpr::Float(value) => {
             ops.push(Opcode::MakeFloat(*value));
         }
-        TExprTag::Call { callee, arguments } => {
+        TExpr::Call {
+            callee, arguments, ..
+        } => {
             ops.push(Opcode::PushNone);
             for arg in arguments.iter().rev() {
                 convert_expression_to_ops(ops, arg);
             }
             ops.push(Opcode::Call(*callee));
+            for _ in 0..arguments.len() {
+                ops.push(Opcode::Pop);
+            }
         }
-        TExprTag::ECall { arguments } => {
+        TExpr::ECall { arguments } => {
             for arg in arguments.iter().rev() {
                 convert_expression_to_ops(ops, arg);
             }

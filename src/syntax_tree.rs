@@ -1,28 +1,63 @@
-use crate::util::CRange;
+use crate::util::*;
 
 #[derive(Debug)]
-pub enum ExprTag<'a> {
-    Int(u64),
-    Float(f64),
+pub enum Expr<'a> {
+    Int {
+        value: u64,
+        view: CRange,
+    },
+    Float {
+        value: f64,
+        view: CRange,
+    },
     Ident {
         id: u32,
+        view: CRange,
     },
-    Tup(&'a mut [Expr<'a>]),
     Call {
         callee: u32,
+        callee_view: CRange,
         arguments: &'a mut [Expr<'a>],
+        arguments_view: CRange,
     },
     DotAccess {
         parent: &'a mut Expr<'a>,
         member_id: u32,
+        member_view: CRange,
     },
-    Add(&'a mut Expr<'a>, &'a mut Expr<'a>),
+    Tup {
+        values: &'a mut [Expr<'a>],
+        view: CRange,
+    },
+    Add {
+        left: &'a mut Expr<'a>,
+        right: &'a mut Expr<'a>,
+        view: CRange,
+    },
 }
 
-#[derive(Debug)]
-pub struct Expr<'a> {
-    pub tag: ExprTag<'a>,
-    pub view: CRange,
+impl<'a> Expr<'a> {
+    pub fn view(&self) -> CRange {
+        use Expr::*;
+        return match self {
+            Int { value, view } => *view,
+            Float { value, view } => *view,
+            Ident { id, view } => *view,
+            Call {
+                callee,
+                callee_view,
+                arguments,
+                arguments_view,
+            } => joinr(*callee_view, *arguments_view),
+            DotAccess {
+                parent,
+                member_view,
+                ..
+            } => joinr(parent.view(), *member_view),
+            Add { view, .. } => *view,
+            Tup { view, .. } => *view,
+        };
+    }
 }
 
 #[derive(Debug)]
@@ -60,5 +95,82 @@ pub enum Stmt<'a> {
         to: &'a mut Expr<'a>,
         to_member: u32,
         value: &'a mut Expr<'a>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Type<'a> {
+    None,
+    Any,
+    Int,
+    Float,
+    Function {
+        return_type: &'a Type<'a>,
+        arguments: &'a [Type<'a>],
+    },
+}
+
+impl<'a> Type<'a> {
+    pub fn is_primitive(&self) -> bool {
+        return match self {
+            Type::Int | Type::Float => true,
+            _ => false,
+        };
+    }
+}
+
+#[derive(Debug)]
+pub enum TExpr<'a> {
+    Ident {
+        stack_offset: i32,
+        type_: Type<'a>,
+    },
+    Int(i64),
+    Float(f64),
+    Add {
+        left: &'a TExpr<'a>,
+        right: &'a TExpr<'a>,
+        type_: Type<'a>,
+    },
+    Call {
+        callee: u32,
+        arguments: &'a [TExpr<'a>],
+        type_: Type<'a>,
+    },
+    ECall {
+        arguments: &'a [TExpr<'a>],
+    },
+}
+
+impl<'a> TExpr<'a> {
+    pub fn type_(&self) -> Type<'a> {
+        use TExpr::*;
+        return match self {
+            Ident { type_, .. } => *type_,
+            Int(_) => Type::Int,
+            Float(_) => Type::Float,
+            Add { type_, .. } => *type_,
+            Call { type_, .. } => *type_,
+            ECall { .. } => Type::None,
+        };
+    }
+}
+
+#[derive(Debug)]
+pub enum TStmt<'a> {
+    Expr(&'a TExpr<'a>),
+    Declare {
+        decl_type: &'a Type<'a>,
+        value: &'a TExpr<'a>,
+    },
+    Assign {
+        stack_offset: i32,
+        value: &'a TExpr<'a>,
+    },
+    Function {
+        uid: u32,
+        return_type: &'a Type<'a>,
+        arguments: &'a [Type<'a>],
+        stmts: &'a [TStmt<'a>],
     },
 }

@@ -121,6 +121,7 @@ impl Runtime {
                             panic!();
                         }
                     }
+                    self.stack.push(NONE_VALUE);
                 }
                 _ => {
                     println!("invalid ecall");

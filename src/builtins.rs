@@ -1,4 +1,5 @@
 use crate::runtime::*;
+use crate::syntax_tree::*;
 use crate::type_checker::*;
 use crate::util::Buckets;
 use std::collections::HashMap;
@@ -44,21 +45,15 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
     let any_arg = buckets.add_array(vec![Type::Any]);
 
     let ecall_args = buckets.add_array(vec![
-        TExpr {
-            tag: TExprTag::Int(PRINT_PRIMITIVE as i64),
-            type_: Type::Int,
-        },
-        TExpr {
-            tag: TExprTag::Ident { stack_offset: -1 },
+        TExpr::Int(PRINT_PRIMITIVE as i64),
+        TExpr::Ident {
+            stack_offset: -1,
             type_: Type::Any,
         },
     ]);
 
-    let ecall_expr = buckets.add(TExpr {
-        tag: TExprTag::ECall {
-            arguments: ecall_args,
-        },
-        type_: Type::None,
+    let ecall_expr = buckets.add(TExpr::ECall {
+        arguments: ecall_args,
     });
 
     let stmts = buckets.add_array(vec![TStmt::Expr(ecall_expr)]);

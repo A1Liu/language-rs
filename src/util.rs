@@ -52,6 +52,13 @@ pub struct Error<'a> {
     pub message: &'a str,
 }
 
+pub fn err<'a, T>(loc: CRange, msg: &'a str) -> Result<T, Error<'a>> {
+    return Err(Error {
+        location: loc,
+        message: msg,
+    });
+}
+
 pub fn unwrap_err<'a, T>(
     value: Option<T>,
     location: CRange,
