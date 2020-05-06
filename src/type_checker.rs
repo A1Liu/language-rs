@@ -119,6 +119,90 @@ where
         };
     }
 
+    fn add_function_symbols(&mut self, stmts: &[Stmt]) -> Result<(), Error<'b>> {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Function {
+                    name,
+                    name_view,
+                    arguments,
+                    return_type_view,
+                    return_type,
+                    stmts,
+                } => {
+                    if self.symbol_scope_contains(*name) {
+                        return Err(Error {
+                            location: *name_view,
+                            message: "redeclaration of name in the same scope",
+                        });
+                    }
+
+                    let decl_return_type;
+                    if let Some(return_type) = return_type {
+                        if let Some(t) = self.types.get(return_type) {
+                            decl_return_type = **t;
+                        } else {
+                            return Err(Error {
+                                location: *return_type_view,
+                                message: "type doesn't exist",
+                            });
+                        }
+                    } else {
+                        decl_return_type = Type::None;
+                    }
+
+                    let decl_return_type = self.buckets.add(decl_return_type);
+
+                    let mut scope = HashMap::new();
+                    let mut arg_types = Vec::new();
+                    let mut offset = -1;
+                    for arg in arguments.iter() {
+                        let arg_type;
+                        if let Some(t) = self.types.get(&arg.type_name) {
+                            arg_type = **t;
+                        } else {
+                            return Err(Error {
+                                location: arg.view,
+                                message: "type doesn't exist",
+                            });
+                        }
+
+                        if scope.contains_key(&arg.name) {
+                            return Err(Error {
+                                location: arg.view,
+                                message: "argument name already defined",
+                            });
+                        }
+
+                        arg_types.push(arg_type);
+                        let arg_type = self.buckets.add(arg_type);
+                        scope.insert(
+                            *name,
+                            SymbolInfo::Variable {
+                                type_: arg_type,
+                                offset,
+                            },
+                        );
+                        offset -= 1;
+                    }
+
+                    let arg_types = self.buckets.add_array(arg_types);
+                    self.symbol_scope_add(
+                        *name,
+                        SymbolInfo::Function {
+                            uid: self.next_uid,
+                            return_type: decl_return_type,
+                            arguments: arg_types,
+                        },
+                    );
+                    self.next_uid += 1;
+                }
+                _ => {}
+            }
+        }
+        return Ok(());
+    }
+
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
         let type_table = builtin_types(self.buckets);
         let symbol_table = builtin_symbols(self.buckets);
@@ -229,6 +313,15 @@ where
                         value: expr,
                     });
                 }
+                // Stmt::Function {
+                //     name,
+                //     name_view,
+                //     arguments,
+                //     return_type_view,
+                //     return_type,
+                //     stmts,
+                // } => {
+                // }
                 _ => panic!(),
             }
         }

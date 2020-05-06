@@ -29,6 +29,7 @@ pub struct Expr<'a> {
 pub struct FuncParam {
     pub name: u32,
     pub type_name: u32,
+    pub view: CRange,
 }
 
 #[derive(Debug)]
@@ -44,8 +45,10 @@ pub enum Stmt<'a> {
     },
     Function {
         name: u32,
-        name_loc: u32,
+        name_view: CRange,
+        return_type_view: CRange,
         arguments: &'a mut [FuncParam],
+        return_type: Option<u32>,
         stmts: &'a mut [Stmt<'a>],
     },
     Assign {

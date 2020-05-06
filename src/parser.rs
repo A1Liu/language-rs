@@ -206,6 +206,7 @@ where
 
         let mut args = Vec::new();
         loop {
+            let start;
             let arg_name;
             match self.pop() {
                 Token::RParen(_) => {
@@ -213,6 +214,7 @@ where
                 }
                 Token::Ident { id, view } => {
                     arg_name = id;
+                    start = view.start;
                 }
                 x => {
                     return Err(Error {
@@ -232,10 +234,12 @@ where
                 }
             }
 
+            let end;
             let type_name;
             match self.pop() {
                 Token::Ident { id, view } => {
                     type_name = id;
+                    end = view.end;
                 }
                 x => {
                     return Err(Error {
@@ -248,6 +252,7 @@ where
             args.push(FuncParam {
                 name: arg_name,
                 type_name,
+                view: newr(start, end),
             });
 
             match self.pop() {
@@ -266,15 +271,36 @@ where
 
         let arguments = self.buckets.add_array(args);
 
-        match self.pop() {
-            Token::Colon(_) => {}
-            x => {
+        let mut return_type_view = newr(0, 0);
+        let return_type = match self.pop() {
+            Token::Arrow(_) => {
+                let tok = self.pop();
+                if let Token::Ident { id, view } = tok {
+                    let tok = self.pop();
+                    if let Token::Colon(_) = tok {
+                        return_type_view = tok.view();
+                        Some(id)
+                    } else {
+                        return Err(Error {
+                            location: tok.view(),
+                            message: "unexpected token when parsing function return type",
+                        });
+                    }
+                } else {
+                    return Err(Error {
+                        location: tok.view(),
+                        message: "unexpected token when parsing function return type",
+                    });
+                }
+            }
+            Token::Colon(_) => None,
+            tok => {
                 return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token when parsing function signature",
+                    location: tok.view(),
+                    message: "unexpected token when parsing function return type",
                 });
             }
-        }
+        };
 
         match self.pop() {
             Token::Newline(_) => {}
@@ -318,9 +344,11 @@ where
 
         let function = Stmt::Function {
             name: def_name,
-            name_loc: def_view.start,
+            name_view: def_view,
+            return_type_view,
             arguments,
             stmts,
+            return_type,
         };
         return Ok(function);
     }

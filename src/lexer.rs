@@ -7,6 +7,7 @@ use std::str::from_utf8_unchecked;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Token {
     Pass(u32),
+    Return(u32),
     Ident {
         id: u32,
         view: CRange,
@@ -17,9 +18,11 @@ pub enum Token {
     Comma(u32),
     Newline(u32),
     Colon(u32),
+    Dash(u32),
     Dot(u32),
     Equal(u32),
     Def(u32),
+    Arrow(u32),
     Indent {
         begin: u32,
         end: u32,
@@ -48,6 +51,7 @@ impl Token {
         use Token::*;
         return match self {
             Pass(x) => newr(x, x + 1),
+            Return(x) => newr(x, x + 6),
             Ident { id, view } => view,
             LParen(x) => newr(x, x + 1),
             RParen(x) => newr(x, x + 1),
@@ -55,8 +59,10 @@ impl Token {
             Dot(x) => newr(x, x + 1),
             Def(x) => newr(x, x + 3),
             Comma(x) => newr(x, x + 1),
+            Dash(x) => newr(x, x + 1),
             Colon(x) => newr(x, x + 1),
             Equal(x) => newr(x, x + 1),
+            Arrow(x) => newr(x, x + 2),
             Newline(x) => newr(x, x + 1),
             Indent { begin, end } => newr(begin, end),
             Integer { value, begin, end } => newr(begin, end.get()),
@@ -221,6 +227,16 @@ impl<'a> Lexer<'a> {
                     self.index += 1;
                     Token::Plus(self.index - 1)
                 }
+                b'-' => {
+                    let begin = self.index;
+                    self.index += 1;
+                    if self.cur() == b'>' {
+                        self.index += 1;
+                        Token::Arrow(begin)
+                    } else {
+                        Token::Dash(begin)
+                    }
+                }
                 b',' => {
                     self.index += 1;
                     Token::Comma(self.index - 1)
@@ -306,6 +322,7 @@ impl<'a> Lexer<'a> {
         return match self.substr(begin, self.index) {
             "pass" => Token::Pass(begin),
             "def" => Token::Def(begin),
+            "return" => Token::Return(begin),
             x => {
                 let id = if self.id_map.contains_key(x) {
                     self.id_map[x]
