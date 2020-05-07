@@ -176,6 +176,11 @@ pub enum TStmt<'a> {
         arguments: &'a [Type<'a>],
         stmts: &'a [TStmt<'a>],
     },
+    If {
+        condition: &'a TExpr<'a>,
+        if_true: &'a [TStmt<'a>],
+        if_false: &'a [TStmt<'a>],
+    },
     Return {
         ret_val: &'a TExpr<'a>,
     },

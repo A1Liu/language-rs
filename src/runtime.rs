@@ -22,7 +22,8 @@ pub enum Opcode {
     SetLocal { stack_offset: i32 },
     Return,
     Call(u32),
-    JumpIf(u32),
+    JumpIf(i32),
+    Jump(i32),
     ECall,
 }
 
@@ -120,6 +121,10 @@ impl Runtime {
             }
             PushNone => {
                 self.stack.push(NONE_VALUE);
+            }
+            Jump(address) => {
+                self.pc = address as usize;
+                return;
             }
             JumpIf(address) => {
                 let arg = self.stack.pop().unwrap();

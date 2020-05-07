@@ -7,9 +7,16 @@ pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
     let mut program = functions.remove(&0).unwrap();
     let mut function_translations = HashMap::new();
 
-    for (id, mut stmts) in functions.drain() {
-        function_translations.insert(id, program.len() as u32);
-        program.append(&mut stmts);
+    for (id, stmts) in functions.drain() {
+        let function_offset = program.len() as u32;
+        function_translations.insert(id, function_offset);
+
+        for (idx, stmt) in stmts.into_iter().enumerate() {
+            program.push(match stmt {
+                Opcode::JumpIf(loc) => Opcode::JumpIf(idx as i32 + loc + function_offset as i32),
+                x => x,
+            });
+        }
     }
 
     for op in &mut program {
@@ -20,6 +27,14 @@ pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
     }
 
     return program;
+}
+
+pub fn convert_stmts_to_funcs(
+    function_index: u32,
+    stmts: &[TStmt],
+    return_index: i32,
+) -> HashMap<u32, Vec<Opcode>> {
+    return HashMap::new();
 }
 
 pub fn convert_stmts_to_ops(
@@ -73,6 +88,11 @@ pub fn convert_stmts_to_ops(
                 });
                 ops.push(Opcode::Return);
             }
+            TStmt::If {
+                condition,
+                if_true,
+                if_false,
+            } => {}
             TStmt::Function {
                 uid,
                 return_type,
