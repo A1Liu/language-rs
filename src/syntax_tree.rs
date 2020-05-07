@@ -96,6 +96,9 @@ pub enum Stmt<'a> {
         to_member: u32,
         value: &'a mut Expr<'a>,
     },
+    Return {
+        ret_val: &'a mut Expr<'a>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -172,5 +175,8 @@ pub enum TStmt<'a> {
         return_type: &'a Type<'a>,
         arguments: &'a [Type<'a>],
         stmts: &'a [TStmt<'a>],
+    },
+    Return {
+        ret_val: &'a TExpr<'a>,
     },
 }

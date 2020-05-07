@@ -3,7 +3,7 @@ use crate::syntax_tree::*;
 use std::collections::HashMap;
 
 pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
-    let mut functions = convert_stmts_to_ops(0, stmts);
+    let mut functions = convert_stmts_to_ops(0, stmts, 0);
     let mut program = functions.remove(&0).unwrap();
     let mut function_translations = HashMap::new();
 
@@ -22,7 +22,11 @@ pub fn convert_program_to_ops(stmts: &[TStmt]) -> Vec<Opcode> {
     return program;
 }
 
-pub fn convert_stmts_to_ops(function_index: u32, stmts: &[TStmt]) -> HashMap<u32, Vec<Opcode>> {
+pub fn convert_stmts_to_ops(
+    function_index: u32,
+    stmts: &[TStmt],
+    return_index: i32,
+) -> HashMap<u32, Vec<Opcode>> {
     let mut functions = HashMap::new();
     let mut ops = Vec::new();
     for stmt in stmts {
@@ -62,13 +66,21 @@ pub fn convert_stmts_to_ops(function_index: u32, stmts: &[TStmt]) -> HashMap<u32
                     stack_offset: *stack_offset,
                 });
             }
+            TStmt::Return { ret_val } => {
+                convert_expression_to_ops(&mut ops, ret_val);
+                ops.push(Opcode::SetLocal {
+                    stack_offset: return_index,
+                });
+                ops.push(Opcode::Return);
+            }
             TStmt::Function {
                 uid,
                 return_type,
                 arguments,
                 stmts,
             } => {
-                for (f, stmts) in convert_stmts_to_ops(*uid, stmts).drain() {
+                let return_idx = -(arguments.len() as i32) - 1;
+                for (f, stmts) in convert_stmts_to_ops(*uid, stmts, return_idx).drain() {
                     functions.insert(f, stmts);
                 }
             }

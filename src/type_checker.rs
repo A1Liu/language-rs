@@ -124,7 +124,7 @@ where
 
         let mut tstmts = builtin_definitions(self.buckets);
 
-        self.check_stmts(program, &mut tstmts)?;
+        self.check_stmts(program, &mut tstmts, None)?;
         return Ok(self.buckets.add_array(tstmts));
     }
 
@@ -132,6 +132,7 @@ where
         &mut self,
         stmts: &[Stmt],
         tstmts: &mut Vec<TStmt<'b>>,
+        return_value: Option<Type<'b>>,
     ) -> Result<(), Error<'b>> {
         self.add_function_symbols(stmts)?;
         let mut current_offset = 0;
@@ -142,6 +143,16 @@ where
                     let expr = self.check_expr(expr)?;
                     let expr = self.buckets.add(expr);
                     tstmts.push(TStmt::Expr(expr));
+                }
+                Stmt::Return { ret_val } => {
+                    let return_value = unwrap_err(
+                        return_value,
+                        ret_val.view(),
+                        "can't return a value from this context here",
+                    );
+                    let ret_val = self.check_expr(ret_val)?;
+                    let ret_val = self.buckets.add(ret_val);
+                    tstmts.push(TStmt::Return { ret_val });
                 }
                 Stmt::Declare {
                     name,
@@ -256,7 +267,7 @@ where
 
                     self.symbol_tables.push(scope);
                     let mut fstmts = Vec::new();
-                    self.check_stmts(stmts, &mut fstmts)?;
+                    self.check_stmts(stmts, &mut fstmts, Some(*return_type))?;
                     self.symbol_tables.pop();
 
                     let fstmts = self.buckets.add(fstmts);

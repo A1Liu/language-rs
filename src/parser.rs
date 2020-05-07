@@ -58,21 +58,29 @@ where
 
     pub fn try_parse_stmt(&mut self) -> Result<Stmt<'b>, Error<'b>> {
         use Token::*;
-        let tok = self.peek();
         match self.peek() {
             p @ Pass(_) => {
                 self.pop();
                 match self.pop() {
                     Newline(_) => return Ok(Stmt::Pass),
                     _ => {
-                        return Err(Error {
-                            location: p.view(),
-                            message: "pass needs to end in a newline",
-                        })
+                        return err(p.view(), "pass needs to end in a newline");
                     }
                 }
             }
             Def(_) => return self.try_parse_func(),
+            Return(_) => {
+                self.pop();
+                let expr = self.try_parse_expr()?;
+
+                let tok = self.pop();
+                if let Newline(_) = tok {
+                    let expr = self.buckets.add(expr);
+                    return Ok(Stmt::Return { ret_val: expr });
+                } else {
+                    return err(tok.view(), "return statement needs to end in newline");
+                }
+            }
             _ => {}
         }
 
