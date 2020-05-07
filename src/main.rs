@@ -3,6 +3,7 @@
 
 use std::env;
 use std::fs::read_to_string;
+use std::io::Write;
 
 extern crate codespan_reporting;
 
@@ -20,16 +21,21 @@ use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 
 fn run_on_file<'a, 'b>(
+    stdout: impl Write,
+    stderr: impl Write,
     buckets: &mut util::Buckets<'b>,
     files: &mut SimpleFiles<&'a str, &'b str>,
     filename: &'a str,
 ) -> Result<(), Diagnostic<usize>> {
     let input = buckets.add_str(&read_to_string(filename).unwrap());
     let file_id = files.add(filename, input);
-    return run_on_string(buckets, file_id, &input);
+
+    return run_on_string(stdout, stderr, buckets, file_id, &input);
 }
 
 fn run_on_string<'b>(
+    output: impl Write,
+    mut stderr: impl Write,
     buckets: &mut util::Buckets<'b>,
     file_id: usize,
     input: &str,
@@ -62,17 +68,49 @@ fn run_on_string<'b>(
         }
     };
 
-    println!("{:?}\n", program);
+    write!(stderr, "{:?}\n\n", program).expect("why did this fail?");
 
     let mut asmer = assembler::Assembler::new();
     let ops = asmer.assemble_program(program);
     // let ops = assembler::convert_program_to_ops(program);
     buckets.drop();
-    println!("{:?}\n", ops);
-    let mut run = runtime::Runtime::new();
+    write!(stderr, "{:?}\n\n", ops).expect("why did this fail?");
+    let mut run = runtime::Runtime::new(output);
     run.run(&ops);
 
     return Ok(());
+}
+
+fn test_file_should_succeed(filename: &str) {
+    let writer = StandardStream::stderr(ColorChoice::Always);
+    let config = codespan_reporting::term::Config::default();
+
+    let mut buckets = util::Buckets::new();
+    let mut files = SimpleFiles::new();
+    let mut output = util::StringWriter::new();
+
+    match run_on_file(
+        &mut output,
+        util::Void::new(),
+        &mut buckets,
+        &mut files,
+        filename,
+    ) {
+        Err(diagnostic) => {
+            codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+                .expect("why did this fail?");
+            panic!();
+        }
+        _ => {}
+    }
+
+    let filename = String::from(filename);
+    assert!(output.to_string() == read_to_string(filename + ".out").expect("why did this fail?"));
+}
+
+#[test]
+fn test_expr() {
+    test_file_should_succeed("test_data/expressions.py");
 }
 
 fn main() {
@@ -84,7 +122,13 @@ fn main() {
     for arg in args.iter().skip(1) {
         let mut buckets = util::Buckets::new();
         let mut files = SimpleFiles::new();
-        match run_on_file(&mut buckets, &mut files, arg) {
+        match run_on_file(
+            std::io::stdout(),
+            std::io::stderr(),
+            &mut buckets,
+            &mut files,
+            arg,
+        ) {
             Err(diagnostic) => {
                 codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
                     .expect("why did this fail?")

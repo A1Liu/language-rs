@@ -1,3 +1,5 @@
+use std::io::Write;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ObjectHeader {
     type_index: u32,
@@ -29,10 +31,14 @@ pub enum Opcode {
     ECall,
 }
 
-pub struct Runtime {
+pub struct Runtime<Out>
+where
+    Out: Write,
+{
     pub stack: Vec<usize>,
     pub heap: Vec<u64>,
     pub fp_ra_stack: Vec<usize>,
+    pub stdout: Out,
     pub fp: usize,
     pub pc: usize,
 }
@@ -55,12 +61,16 @@ const BOOL_HEADER: ObjectHeader = ObjectHeader {
 pub const PRINT_PRIMITIVE: u64 = 0;
 pub const FLOAT_CAST: u64 = 1;
 
-impl Runtime {
-    pub fn new() -> Self {
+impl<Out> Runtime<Out>
+where
+    Out: Write,
+{
+    pub fn new(stdout: Out) -> Self {
         return Self {
             stack: Vec::new(), // dummy frame pointer value
             heap: Vec::new(),
             fp_ra_stack: vec![NONE_VALUE, 0],
+            stdout,
             fp: 0,
             pc: 0,
         };
@@ -142,8 +152,7 @@ impl Runtime {
                         INT_HEADER | BOOL_HEADER => self.heap[arg] != 0,
                         FLOAT_HEADER => f64::from_bits(self.heap[arg]) != 0.0,
                         x => {
-                            println!("attempting to use value as boolean with type: {:?}", x);
-                            panic!();
+                            panic!("attempting to use value as boolean with type: {:?}\n", x);
                         }
                     };
 
@@ -174,13 +183,15 @@ impl Runtime {
 
                     match type_id {
                         INT_HEADER => {
-                            println!("{}", arg_value as i64);
+                            write!(self.stdout, "{}\n", arg_value as i64)
+                                .expect("should not have failed");
                         }
                         FLOAT_HEADER => {
-                            println!("{}", f64::from_bits(arg_value));
+                            write!(self.stdout, "{}\n", f64::from_bits(arg_value))
+                                .expect("should not have failed");
                         }
                         x => {
-                            panic!("{:?}", x);
+                            panic!("got print_primitive ecall arg of invalid type {:?}", x);
                         }
                     }
                     self.stack.push(NONE_VALUE);
