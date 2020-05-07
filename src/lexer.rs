@@ -8,6 +8,9 @@ use std::str::from_utf8_unchecked;
 pub enum Token {
     Pass(u32),
     Return(u32),
+    If(u32),
+    Else(u32),
+    Elif(u32),
     Ident {
         id: u32,
         view: CRange,
@@ -52,6 +55,9 @@ impl Token {
         return match self {
             Pass(x) => newr(x, x + 1),
             Return(x) => newr(x, x + 6),
+            If(x) => newr(x, x + 2),
+            Else(x) => newr(x, x + 4),
+            Elif(x) => newr(x, x + 4),
             Ident { id, view } => view,
             LParen(x) => newr(x, x + 1),
             RParen(x) => newr(x, x + 1),
@@ -323,6 +329,9 @@ impl<'a> Lexer<'a> {
             "pass" => Token::Pass(begin),
             "def" => Token::Def(begin),
             "return" => Token::Return(begin),
+            "if" => Token::If(begin),
+            "else" => Token::Else(begin),
+            "elif" => Token::Elif(begin),
             x => {
                 let id = if self.id_map.contains_key(x) {
                     self.id_map[x]

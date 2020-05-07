@@ -59,27 +59,32 @@ where
     pub fn try_parse_stmt(&mut self) -> Result<Stmt<'b>, Error<'b>> {
         use Token::*;
         match self.peek() {
-            p @ Pass(_) => {
+            Pass(_) => {
                 self.pop();
-                match self.pop() {
-                    Newline(_) => return Ok(Stmt::Pass),
-                    _ => {
-                        return err(p.view(), "pass needs to end in a newline");
-                    }
-                }
+                self.expect_newline()?;
+                return Ok(Stmt::Pass);
             }
             Def(_) => return self.try_parse_func(),
             Return(_) => {
                 self.pop();
                 let expr = self.try_parse_expr()?;
+                self.expect_newline()?;
+                let expr = self.buckets.add(expr);
+                return Ok(Stmt::Return { ret_val: expr });
+            }
+            If(_) => {
+                self.pop();
+                let condition = self.try_parse_expr()?;
+                self.expect_colon()?;
+                self.expect_newline()?;
+                let if_true = self.try_parse_block()?;
+                let if_false = self.try_parse_else()?;
 
-                let tok = self.pop();
-                if let Newline(_) = tok {
-                    let expr = self.buckets.add(expr);
-                    return Ok(Stmt::Return { ret_val: expr });
-                } else {
-                    return err(tok.view(), "return statement needs to end in newline");
-                }
+                return Ok(Stmt::If {
+                    condition: self.buckets.add(condition),
+                    if_true,
+                    if_false,
+                });
             }
             _ => {}
         }
@@ -112,24 +117,15 @@ where
                 }
 
                 let expr = self.try_parse_expr()?;
-                match self.pop() {
-                    Newline(_) => {
-                        let expr = self.buckets.add(expr);
-                        return Ok(Stmt::Declare {
-                            name: id,
-                            name_view: view,
-                            type_name: type_ident,
-                            type_view,
-                            value: expr,
-                        });
-                    }
-                    x => {
-                        return Err(Error {
-                            location: joinr(tok.view(), x.view()),
-                            message: "statement needs to end in a newline",
-                        })
-                    }
-                }
+                self.expect_newline()?;
+                let expr = self.buckets.add(expr);
+                return Ok(Stmt::Declare {
+                    name: id,
+                    name_view: view,
+                    type_name: type_ident,
+                    type_view,
+                    value: expr,
+                });
             }
         }
 
@@ -185,7 +181,63 @@ where
         }
     }
 
-    pub fn try_parse_func(&mut self) -> Result<Stmt<'b>, Error<'b>> {
+    fn try_parse_else(&mut self) -> Result<&'b mut [Stmt<'b>], Error<'b>> {
+        match self.peek() {
+            Token::Else(_) => {
+                self.pop();
+                self.expect_colon()?;
+                self.expect_newline()?;
+                return Ok(self.try_parse_block()?);
+            }
+            Token::Elif(_) => {
+                self.pop();
+                let condition = self.try_parse_expr()?;
+                self.expect_colon()?;
+                self.expect_newline()?;
+                let if_true = self.try_parse_block()?;
+                let if_false = self.try_parse_else()?;
+
+                let elif_branch = Stmt::If {
+                    condition: self.buckets.add(condition),
+                    if_true,
+                    if_false,
+                };
+
+                return Ok(self.buckets.add_array(vec![elif_branch]));
+            }
+            _ => return Ok(self.buckets.add(Vec::new())),
+        }
+    }
+
+    fn try_parse_block(&mut self) -> Result<&'b mut [Stmt<'b>], Error<'b>> {
+        match self.pop() {
+            Token::Indent { begin, end } => {}
+            x => {
+                return err(x.view(), "unexpected token when parsing function signature");
+            }
+        }
+
+        let mut stmts = Vec::new();
+        while match self.peek() {
+            Token::Dedent(_) => false,
+            _ => true,
+        } {
+            stmts.push(self.try_parse_stmt()?);
+        }
+
+        let stmts = self.buckets.add_array(stmts);
+
+        match self.pop() {
+            Token::Dedent(_) => {}
+            x => {
+                return err(x.view(), "unexpected token when parsing function dedent");
+            }
+        }
+
+        return Ok(stmts);
+    }
+
+    fn try_parse_func(&mut self) -> Result<Stmt<'b>, Error<'b>> {
         match self.pop() {
             Token::Def(_) => {}
             _ => panic!(),
@@ -209,10 +261,7 @@ where
         match self.pop() {
             Token::LParen(_) => {}
             x => {
-                return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token when parsing function arguments",
-                });
+                return err(x.view(), "unexpected token when parsing function arguments");
             }
         }
 
@@ -229,20 +278,14 @@ where
                     start = view.start;
                 }
                 x => {
-                    return Err(Error {
-                        location: x.view(),
-                        message: "unexpected token when parsing function arguments",
-                    });
+                    return err(x.view(), "unexpected token when parsing function arguments");
                 }
             }
 
             match self.pop() {
                 Token::Colon(_) => {}
                 x => {
-                    return Err(Error {
-                        location: x.view(),
-                        message: "unexpected token when parsing function arguments",
-                    });
+                    return err(x.view(), "unexpected token when parsing function arguments");
                 }
             }
 
@@ -273,86 +316,41 @@ where
                 }
                 Token::Comma(_) => {}
                 x => {
-                    return Err(Error {
-                        location: x.view(),
-                        message: "unexpected token when parsing function arguments",
-                    });
+                    return err(x.view(), "unexpected token when parsing function arguments");
                 }
             }
         }
 
         let arguments = self.buckets.add_array(args);
 
-        let mut return_type_view = newr(0, 0);
-        let return_type = match self.pop() {
+        let (return_type, return_type_view) = match self.pop() {
             Token::Arrow(_) => {
                 let tok = self.pop();
                 if let Token::Ident { id, view } = tok {
                     let tok = self.pop();
                     if let Token::Colon(_) = tok {
-                        return_type_view = tok.view();
-                        Some(id)
+                        (Some(id), tok.view())
                     } else {
-                        return Err(Error {
-                            location: tok.view(),
-                            message: "unexpected token when parsing function return type",
-                        });
+                        return err(tok.view(), "expected ':' character");
                     }
                 } else {
-                    return Err(Error {
-                        location: tok.view(),
-                        message: "unexpected token when parsing function return type",
-                    });
+                    return err(tok.view(), "expected identifier");
                 }
             }
-            Token::Colon(_) => None,
+            c @ Token::Colon(_) => (None, c.view()),
             tok => {
-                return Err(Error {
-                    location: tok.view(),
-                    message: "unexpected token when parsing function return type",
-                });
+                return err(tok.view(), "expected '->' or ':'");
             }
         };
 
         match self.pop() {
             Token::Newline(_) => {}
             x => {
-                return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token when parsing function signature",
-                });
+                return err(x.view(), "expected newline");
             }
         }
 
-        match self.pop() {
-            Token::Indent { begin, end } => {}
-            x => {
-                return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token when parsing function signature",
-                });
-            }
-        }
-
-        let mut stmts = Vec::new();
-        while match self.peek() {
-            Token::Dedent(_) => false,
-            _ => true,
-        } {
-            stmts.push(self.try_parse_stmt()?);
-        }
-
-        let stmts = self.buckets.add_array(stmts);
-
-        match self.pop() {
-            Token::Dedent(_) => {}
-            x => {
-                return Err(Error {
-                    location: x.view(),
-                    message: "unexpected token when parsing function dedent",
-                });
-            }
-        }
+        let stmts = self.try_parse_block()?;
 
         let function = Stmt::Function {
             name: def_name,
@@ -527,5 +525,19 @@ where
             values: self.buckets.add_array(exprs),
             view: newr(tup_begin, tup_end),
         });
+    }
+
+    pub fn expect_colon(&mut self) -> Result<(), Error<'b>> {
+        return match self.pop() {
+            Token::Colon(_) => Ok(()),
+            x => err(x.view(), "expected ':' character"),
+        };
+    }
+
+    pub fn expect_newline(&mut self) -> Result<(), Error<'b>> {
+        return match self.pop() {
+            Token::Newline(_) => Ok(()),
+            x => err(x.view(), "expected newline character"),
+        };
     }
 }

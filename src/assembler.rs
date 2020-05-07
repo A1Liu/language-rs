@@ -52,6 +52,11 @@ impl Assembler {
                     let op_loc = self.labels[*label as usize];
                     *label = function_translations[&op_loc.function_index] + op_loc.offset;
                 }
+                Opcode::Jump(label) => {
+                    let op_loc = self.labels[*label as usize];
+                    *label = function_translations[&op_loc.function_index] + op_loc.offset;
+                }
+
                 _ => {}
             }
         }

@@ -96,6 +96,11 @@ pub enum Stmt<'a> {
         to_member: u32,
         value: &'a mut Expr<'a>,
     },
+    If {
+        condition: &'a mut Expr<'a>,
+        if_true: &'a mut [Stmt<'a>],
+        if_false: &'a mut [Stmt<'a>],
+    },
     Return {
         ret_val: &'a mut Expr<'a>,
     },
