@@ -64,7 +64,9 @@ fn run_on_string<'b>(
 
     println!("{:?}\n", program);
 
-    let ops = assembler::convert_program_to_ops(program);
+    let mut asmer = assembler::Assembler::new();
+    let ops = asmer.assemble_program(program);
+    // let ops = assembler::convert_program_to_ops(program);
     buckets.drop();
     println!("{:?}\n", ops);
     let mut run = runtime::Runtime::new();

@@ -18,12 +18,14 @@ pub enum Opcode {
     AddInt,
     PushNone,
     Pop,
+    GetGlobal { stack_offset: u32 },
+    SetGlobal { stack_offset: u32 },
     GetLocal { stack_offset: i32 },
     SetLocal { stack_offset: i32 },
     Return,
-    Call(u32),
-    JumpIf(i32),
-    Jump(i32),
+    Call(u32),   // absolute address
+    JumpIf(u32), // absolute address
+    Jump(u32),   // absolute address
     ECall,
 }
 
@@ -111,6 +113,12 @@ impl Runtime {
             }
             Pop => {
                 self.stack.pop();
+            }
+            GetGlobal { stack_offset } => {
+                self.stack.push(self.stack[stack_offset as usize]);
+            }
+            SetGlobal { stack_offset } => {
+                self.stack[stack_offset as usize] = self.stack.pop().unwrap();
             }
             GetLocal { stack_offset } => {
                 self.stack

@@ -136,7 +136,7 @@ pub enum TExpr<'a> {
         type_: Type<'a>,
     },
     Call {
-        callee: u32,
+        callee_uid: u32,
         arguments: &'a [TExpr<'a>],
         type_: Type<'a>,
     },

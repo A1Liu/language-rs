@@ -132,7 +132,7 @@ where
         &mut self,
         stmts: &[Stmt],
         tstmts: &mut Vec<TStmt<'b>>,
-        return_value: Option<Type<'b>>,
+        return_type: Option<Type<'b>>,
     ) -> Result<(), Error<'b>> {
         self.add_function_symbols(stmts)?;
         let mut current_offset = 0;
@@ -145,12 +145,19 @@ where
                     tstmts.push(TStmt::Expr(expr));
                 }
                 Stmt::Return { ret_val } => {
-                    let return_value = unwrap_err(
-                        return_value,
+                    let return_type = unwrap_err(
+                        return_type,
                         ret_val.view(),
-                        "can't return a value from this context here",
-                    );
+                        "can't return a value from this context",
+                    )?;
+
+                    let ret_val_view = ret_val.view();
                     let ret_val = self.check_expr(ret_val)?;
+
+                    if !Self::is_assignment_compatible(&return_type, &ret_val.type_()) {
+                        return err(ret_val_view, "returning the wrong type");
+                    }
+
                     let ret_val = self.buckets.add(ret_val);
                     tstmts.push(TStmt::Return { ret_val });
                 }
@@ -359,7 +366,7 @@ where
                     }
 
                     return Ok(TExpr::Call {
-                        callee: uid,
+                        callee_uid: uid,
                         arguments: self.buckets.add_array(args),
                         type_: *return_type,
                     });
@@ -388,7 +395,7 @@ where
 
     fn cast_to_float(&mut self, value: &'b TExpr<'b>) -> &'b mut TExpr<'b> {
         return self.buckets.add(TExpr::Call {
-            callee: FLOAT_IDX,
+            callee_uid: FLOAT_IDX,
             arguments: ref_to_slice(value),
             type_: Type::Float,
         });
