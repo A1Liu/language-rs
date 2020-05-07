@@ -74,16 +74,38 @@ where
             }
             If(_) => {
                 self.pop();
-                let condition = self.try_parse_expr()?;
-                self.expect_colon()?;
-                self.expect_newline()?;
-                let if_true = self.try_parse_block()?;
-                let if_false = self.try_parse_else()?;
+                let mut conditioned_blocks = Vec::new();
+                let else_branch;
+                loop {
+                    let condition = self.try_parse_expr()?;
+                    self.expect_colon()?;
+                    self.expect_newline()?;
+                    let block = self.try_parse_block()?;
 
+                    conditioned_blocks.push(IfBranch { condition, block });
+
+                    match self.peek() {
+                        Else(_) => {
+                            self.pop();
+                            self.expect_colon()?;
+                            self.expect_newline()?;
+                            else_branch = self.try_parse_block()?;
+                            break;
+                        }
+                        Elif(_) => {
+                            self.pop();
+                        }
+                        _ => {
+                            else_branch = self.buckets.add_array(vec![]);
+                            break;
+                        }
+                    }
+                }
+
+                let conditioned_blocks = self.buckets.add_array(conditioned_blocks);
                 return Ok(Stmt::If {
-                    condition: self.buckets.add(condition),
-                    if_true,
-                    if_false,
+                    conditioned_blocks,
+                    else_branch,
                 });
             }
             _ => {}
@@ -178,34 +200,6 @@ where
                     "statement needs to end in a newline",
                 );
             }
-        }
-    }
-
-    fn try_parse_else(&mut self) -> Result<&'b mut [Stmt<'b>], Error<'b>> {
-        match self.peek() {
-            Token::Else(_) => {
-                self.pop();
-                self.expect_colon()?;
-                self.expect_newline()?;
-                return Ok(self.try_parse_block()?);
-            }
-            Token::Elif(_) => {
-                self.pop();
-                let condition = self.try_parse_expr()?;
-                self.expect_colon()?;
-                self.expect_newline()?;
-                let if_true = self.try_parse_block()?;
-                let if_false = self.try_parse_else()?;
-
-                let elif_branch = Stmt::If {
-                    condition: self.buckets.add(condition),
-                    if_true,
-                    if_false,
-                };
-
-                return Ok(self.buckets.add_array(vec![elif_branch]));
-            }
-            _ => return Ok(self.buckets.add(Vec::new())),
         }
     }
 

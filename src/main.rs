@@ -55,6 +55,8 @@ fn run_on_string<'b>(
         }
     };
 
+    write!(stderr, "{:?}\n\n", program).expect("why did this fail?");
+
     let mut t = type_checker::TypeChecker::new(buckets);
     let program = match t.check_program(program) {
         Ok(p) => p,

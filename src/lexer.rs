@@ -122,6 +122,7 @@ impl<'a> Lexer<'a> {
             LexerState::Indentation => self.next_indent(),
             LexerState::End => {
                 if self.indent_stack.len() > 1 {
+                    self.indent_stack.pop();
                     Token::Dedent(self.index)
                 } else {
                     Token::End(self.index)
@@ -164,13 +165,13 @@ impl<'a> Lexer<'a> {
         }
 
         let prev_indent = *self.indent_stack.last().unwrap();
-        if self.index == self.data.len() as u32 {
-            self.state = LexerState::End;
-            return Token::End(self.index);
-        } else if indent_level < prev_indent {
+        if indent_level < prev_indent {
             self.state = LexerState::Dedent;
             self.indent_level = indent_level;
             return self.next_dedent();
+        } else if self.index == self.data.len() as u32 {
+            self.state = LexerState::End;
+            return Token::End(self.index);
         } else if indent_level == prev_indent {
             self.state = LexerState::Normal;
             return self.next_normal();

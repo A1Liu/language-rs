@@ -68,6 +68,12 @@ pub struct FuncParam {
 }
 
 #[derive(Debug)]
+pub struct IfBranch<'a> {
+    pub condition: Expr<'a>,
+    pub block: &'a mut [Stmt<'a>],
+}
+
+#[derive(Debug)]
 pub enum Stmt<'a> {
     Pass,
     Expr(&'a mut Expr<'a>),
@@ -97,9 +103,8 @@ pub enum Stmt<'a> {
         value: &'a mut Expr<'a>,
     },
     If {
-        condition: &'a mut Expr<'a>,
-        if_true: &'a mut [Stmt<'a>],
-        if_false: &'a mut [Stmt<'a>],
+        conditioned_blocks: &'a [IfBranch<'a>],
+        else_branch: &'a [Stmt<'a>],
     },
     Return {
         ret_val: &'a mut Expr<'a>,
