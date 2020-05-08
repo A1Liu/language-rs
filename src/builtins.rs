@@ -1,12 +1,12 @@
 use crate::runtime::*;
 use crate::syntax_tree::*;
-use crate::type_checker::*;
-use crate::util::{newr, Buckets};
+use crate::util::*;
 use std::collections::HashMap;
 
 pub const PRINT_IDX: u32 = 0;
 pub const FLOAT_IDX: u32 = 1;
 pub const INT_IDX: u32 = 2;
+pub const UID_BEGIN: u32 = 10;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
     let names = vec!["print", "float", "int"];
@@ -48,7 +48,7 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
     let ecall_args = buckets.add_array(vec![
         TExpr::Int(PRINT_PRIMITIVE as i64),
         TExpr::Ident {
-            stack_offset: -1,
+            uid: 2,
             type_: Type::Any,
         },
     ]);
@@ -57,12 +57,15 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
         arguments: ecall_args,
     });
 
+    let uids = buckets.add_array(vec![2]);
+
     let stmts = buckets.add_array(vec![TStmt::Expr(ecall_expr)]);
 
     defns.push(TStmt::Function {
         uid: 1,
         return_type: none_type,
-        arguments: any_arg,
+        argument_types: any_arg,
+        argument_uids: uids,
         stmts,
     });
     return defns;

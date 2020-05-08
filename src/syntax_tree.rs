@@ -135,7 +135,7 @@ impl<'a> Type<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum TExpr<'a> {
     Ident {
-        stack_offset: i32,
+        uid: u32,
         type_: Type<'a>,
     },
     Int(i64),
@@ -174,16 +174,17 @@ pub enum TStmt<'a> {
     Expr(&'a TExpr<'a>),
     Declare {
         decl_type: &'a Type<'a>,
-        value: &'a TExpr<'a>,
+        uid: u32,
     },
     Assign {
-        stack_offset: i32,
+        uid: u32,
         value: &'a TExpr<'a>,
     },
     Function {
         uid: u32,
         return_type: &'a Type<'a>,
-        arguments: &'a [Type<'a>],
+        argument_uids: &'a [u32],
+        argument_types: &'a [Type<'a>],
         stmts: &'a [TStmt<'a>],
     },
     If {

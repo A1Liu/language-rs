@@ -2,137 +2,12 @@ use crate::builtins::*;
 use crate::syntax_tree::*;
 use crate::util::*;
 use std::collections::HashMap;
-use std::ptr::NonNull;
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-
-pub enum SymbolInfo<'a> {
-    Function {
-        uid: u32,
-        return_type: &'a Type<'a>,
-        arguments: &'a [Type<'a>],
-        view: CRange,
-    },
-    Variable {
-        offset: i32,
-        type_: &'a Type<'a>,
-        view: CRange,
-    },
-}
-
-impl<'a> SymbolInfo<'a> {
-    pub fn get_type(&self) -> Type<'a> {
-        return match self {
-            SymbolInfo::Function {
-                return_type,
-                arguments,
-                ..
-            } => Type::Function {
-                return_type,
-                arguments,
-            },
-            SymbolInfo::Variable { type_, .. } => **type_,
-        };
-    }
-
-    pub fn view(&self) -> CRange {
-        use SymbolInfo::*;
-        return match self {
-            Function { view, .. } => *view,
-            Variable { view, .. } => *view,
-        };
-    }
-}
-
-struct SymbolTable<'a> {
-    pub symbols: HashMap<u32, SymbolInfo<'a>>,
-    parent: Option<NonNull<SymbolTable<'a>>>,
-}
-
-impl<'a> SymbolTable<'a> {
-    pub fn new_global(symbols: HashMap<u32, SymbolInfo<'a>>) -> Self {
-        return Self {
-            symbols,
-            parent: None,
-        };
-    }
-
-    pub fn new<'b>(parent: &mut SymbolTable<'b>) -> Self
-    where
-        'b: 'a,
-    {
-        return Self {
-            symbols: HashMap::new(),
-            parent: Some(NonNull::from(parent)),
-        };
-    }
-
-    pub fn search_current(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        return self.symbols.get(&symbol).map(|r| *r);
-    }
-
-    pub fn fold_into_parent(mut self) -> Result<(), Error<'static>> {
-        for (symbol, info) in self.symbols.drain() {
-            unsafe { self.parent.unwrap().as_mut() }.declare(symbol, info)?;
-        }
-        return Ok(());
-    }
-
-    pub fn merge_parallel_tables<'b>(
-        mut left: SymbolTable<'b>,
-        mut right: SymbolTable<'b>,
-    ) -> Result<SymbolTable<'b>, Error<'static>> {
-        assert!(left.parent == right.parent && left.parent != None);
-        let mut result = SymbolTable::new(unsafe { left.parent.unwrap().as_mut() });
-        for (id, info) in left.symbols.drain() {
-            if let Some(rinfo) = right.symbols.remove(&id) {
-                if info != rinfo {
-                    return err(info.view(), "");
-                }
-            }
-            result.declare(id, info)?;
-        }
-
-        for (id, info) in right.symbols.drain() {
-            result.declare(id, info)?;
-        }
-
-        return Ok(result);
-    }
-
-    pub fn declare(&mut self, symbol: u32, info: SymbolInfo<'a>) -> Result<(), Error<'static>> {
-        if self.symbols.contains_key(&symbol) {
-            return err(info.view(), "name already exists in scope");
-        }
-        self.symbols.insert(symbol, info);
-        return Ok(());
-    }
-
-    pub fn search(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        return unsafe { self.search_unsafe(symbol) };
-    }
-
-    unsafe fn search_unsafe(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        let mut current = NonNull::from(self);
-        let mut symbols = NonNull::from(&current.as_ref().symbols);
-
-        loop {
-            if let Some(info) = symbols.as_ref().get(&symbol) {
-                return Some(*info);
-            } else if let Some(parent) = current.as_ref().parent {
-                current = parent;
-                symbols = NonNull::from(&current.as_ref().symbols);
-            } else {
-                return None;
-            }
-        }
-    }
-}
 
 pub struct TypeChecker<'a, 'b>
 where
     'b: 'a,
 {
-    next_uid: u32,
+    next_uid_: u32,
     buckets: &'a mut Buckets<'b>,
     types: HashMap<u32, &'b Type<'b>>,
 }
@@ -143,10 +18,41 @@ where
 {
     pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
         return Self {
-            next_uid: 0,
+            next_uid_: 0,
             buckets,
             types: HashMap::new(),
         };
+    }
+
+    pub fn next_uid(&mut self) -> u32 {
+        let uid = self.next_uid_;
+        self.next_uid_ += 1;
+        return uid;
+    }
+
+    pub fn check_program(&mut self, program: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
+        let type_table = builtin_types(self.buckets);
+        let symbol_table = builtin_symbols(self.buckets);
+        self.types = type_table;
+        self.next_uid_ = UID_BEGIN;
+
+        let sym = SymbolTable::new_global(symbol_table);
+
+        let (mut sym, mut tstmts) = self.check_stmts(program, sym, None)?;
+
+        let mut program = Vec::new();
+        for (symbol, info) in sym.symbols.drain() {
+            println!("{:?}", info);
+            program.push(TStmt::Declare {
+                uid: info.uid(),
+                decl_type: self.buckets.add(info.get_type()),
+            });
+        }
+
+        program.append(&mut tstmts);
+        program.append(&mut builtin_definitions(self.buckets));
+
+        return Ok(self.buckets.add_array(program));
     }
 
     fn add_function_symbols(
@@ -169,7 +75,7 @@ where
                         decl_return_type = **unwrap_err(
                             self.types.get(return_type),
                             *return_type_view,
-                            "type_doesn't exist",
+                            "type doesn't exist",
                         )?;
                     } else {
                         decl_return_type = Type::None;
@@ -192,13 +98,12 @@ where
                     sym.declare(
                         *name,
                         SymbolInfo::Function {
-                            uid: self.next_uid,
+                            uid: self.next_uid(),
                             return_type: decl_return_type,
                             arguments: arg_types,
                             view: *name_view,
                         },
                     )?;
-                    self.next_uid += 1;
                 }
                 _ => {}
             }
@@ -206,34 +111,19 @@ where
         return Ok(());
     }
 
-    pub fn check_program(&mut self, program: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
-        let type_table = builtin_types(self.buckets);
-        let symbol_table = builtin_symbols(self.buckets);
-        self.types = type_table;
-        self.next_uid = symbol_table.len() as u32 + 1;
-
-        let mut sym = SymbolTable::new_global(symbol_table);
-
-        let mut tstmts = builtin_definitions(self.buckets);
-
-        self.check_stmts(program, &mut sym, &mut tstmts, None)?;
-        return Ok(self.buckets.add_array(tstmts));
-    }
-
     fn check_stmts(
         &mut self,
         stmts: &[Stmt],
-        sym: &mut SymbolTable<'b>,
-        tstmts: &mut Vec<TStmt<'b>>,
+        mut sym: SymbolTable<'b>,
         return_type: Option<Type<'b>>,
-    ) -> Result<(), Error<'b>> {
-        self.add_function_symbols(sym, stmts)?;
-        let mut current_offset = 0;
+    ) -> Result<(SymbolTable<'b>, Vec<TStmt<'b>>), Error<'b>> {
+        self.add_function_symbols(&mut sym, stmts)?;
+        let mut tstmts = Vec::new();
         for stmt in stmts {
             match stmt {
                 Stmt::Pass => {}
                 Stmt::Expr(expr) => {
-                    let expr = self.check_expr(sym, expr)?;
+                    let expr = self.check_expr(&sym, expr)?;
                     let expr = self.buckets.add(expr);
                     tstmts.push(TStmt::Expr(expr));
                 }
@@ -245,9 +135,9 @@ where
                     )?;
 
                     let ret_val_view = ret_val.view();
-                    let ret_val = self.check_expr(sym, ret_val)?;
+                    let ret_val = self.check_expr(&sym, ret_val)?;
 
-                    if !Self::is_assignment_compatible(&return_type, &ret_val.type_()) {
+                    if !Self::is_assignment_compatible(return_type, ret_val.type_()) {
                         return err(ret_val_view, "returning the wrong type");
                     }
 
@@ -264,55 +154,47 @@ where
                     let decl_type =
                         *unwrap_err(self.types.get(type_name), *type_view, "type doesn't exist")?;
 
+                    let uid = self.next_uid();
+
                     sym.declare(
                         *name,
                         SymbolInfo::Variable {
                             type_: decl_type,
-                            offset: current_offset,
                             view: *name_view,
+                            uid,
                         },
                     )?;
 
-                    let expr = self.check_expr(sym, value)?;
-                    let expr = self.buckets.add(expr);
-
-                    if !Self::is_assignment_compatible(decl_type, &expr.type_()) {
+                    let expr = self.check_expr(&sym, value)?;
+                    if !Self::is_assignment_compatible(*decl_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
 
-                    tstmts.push(TStmt::Declare {
-                        decl_type,
-                        value: expr,
-                    });
-                    current_offset += 1;
+                    let expr = self.buckets.add(expr);
+
+                    tstmts.push(TStmt::Assign { uid, value: expr });
                 }
                 Stmt::Assign { to, to_view, value } => {
                     let var_info = unwrap_err(sym.search(*to), *to_view, "name doesn't exist")?;
 
                     let to_type;
-                    let to_offset;
-                    if let SymbolInfo::Variable { offset, type_, .. } = var_info {
+                    let to_uid;
+                    if let SymbolInfo::Variable { uid, type_, .. } = var_info {
                         to_type = *type_;
-                        to_offset = offset;
+                        to_uid = uid;
                     } else {
                         return err(*to_view, "name being assigned to is a function");
                     }
 
-                    let expr = self.check_expr(sym, value)?;
-                    let expr = self.buckets.add(expr);
-
-                    if !Self::is_assignment_compatible(&to_type, &expr.type_()) {
+                    let expr = self.check_expr(&sym, value)?;
+                    if !Self::is_assignment_compatible(to_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
 
-                    let expr = if to_type == Type::Float && expr.type_() == Type::Int {
-                        self.cast_to_float(expr)
-                    } else {
-                        expr
-                    };
+                    let expr = self.buckets.add(expr);
 
                     tstmts.push(TStmt::Assign {
-                        stack_offset: to_offset,
+                        uid: to_uid,
                         value: expr,
                     });
                 }
@@ -341,29 +223,43 @@ where
                         panic!();
                     }
 
-                    let mut fsym = SymbolTable::new(sym);
+                    let mut fsym = SymbolTable::new(&sym);
+                    let mut argument_uids = Vec::new();
 
-                    let mut offset = -1;
                     for (arg, arg_type) in arguments.iter().zip(arg_types) {
+                        let uid = self.next_uid();
+
+                        argument_uids.push(uid);
                         fsym.declare(
                             arg.name,
                             SymbolInfo::Variable {
                                 type_: arg_type,
-                                offset,
+                                uid,
                                 view: arg.view,
                             },
                         )?;
-
-                        offset -= 1;
                     }
 
+                    let (mut fsym, mut fblock) =
+                        self.check_stmts(stmts, fsym, Some(*return_type))?;
                     let mut fstmts = Vec::new();
-                    self.check_stmts(stmts, &mut fsym, &mut fstmts, Some(*return_type))?;
 
-                    let fstmts = self.buckets.add(fstmts);
+                    for (uid, info) in fsym.symbols.drain() {
+                        fstmts.push(TStmt::Declare {
+                            uid,
+                            decl_type: self.buckets.add(info.get_type()),
+                        });
+                    }
+
+                    fstmts.append(&mut fblock);
+
+                    let fstmts = self.buckets.add_array(fstmts);
+                    let argument_uids = self.buckets.add_array(argument_uids);
+
                     tstmts.push(TStmt::Function {
                         uid,
-                        arguments: arg_types,
+                        argument_types: arg_types,
+                        argument_uids,
                         return_type,
                         stmts: fstmts,
                     });
@@ -375,23 +271,19 @@ where
                     let mut sym_tables = Vec::new();
                     let mut ifstmts = Vec::new();
                     for conditioned_block in conditioned_blocks.iter() {
-                        let condition = self.check_expr(sym, &conditioned_block.condition)?;
-                        let mut tblock = Vec::new();
-                        let mut ifsym = SymbolTable::new(sym);
-                        self.check_stmts(
+                        let condition = self.check_expr(&sym, &conditioned_block.condition)?;
+
+                        let (ifsym, tblock) = self.check_stmts(
                             conditioned_block.block,
-                            &mut ifsym,
-                            &mut tblock,
+                            SymbolTable::new(&sym),
                             return_type,
                         )?;
                         sym_tables.push(ifsym);
                         ifstmts.push((condition, tblock));
                     }
 
-                    let mut else_sym = SymbolTable::new(sym);
-                    let mut else_block = Vec::new();
-
-                    self.check_stmts(else_branch, &mut else_sym, &mut else_block, return_type)?;
+                    let (else_sym, else_block) =
+                        self.check_stmts(else_branch, SymbolTable::new(&sym), return_type)?;
 
                     sym_tables.push(else_sym);
 
@@ -420,7 +312,7 @@ where
             }
         }
 
-        return Ok(());
+        return Ok((sym, tstmts));
     }
 
     fn check_expr(&mut self, sym: &SymbolTable<'b>, expr: &Expr) -> Result<TExpr<'b>, Error<'b>> {
@@ -434,15 +326,12 @@ where
             Expr::Ident { id, view } => {
                 let var_info = unwrap_err(sym.search(*id), *view, "referenced name doesn't exist")?;
 
-                let (offset, type_) = match var_info {
-                    SymbolInfo::Variable { offset, type_, .. } => (offset, type_),
+                let (uid, type_) = match var_info {
+                    SymbolInfo::Variable { uid, type_, .. } => (uid, type_),
                     SymbolInfo::Function { .. } => panic!("we don't have function objects yet"),
                 };
 
-                return Ok(TExpr::Ident {
-                    stack_offset: offset,
-                    type_: *type_,
-                });
+                return Ok(TExpr::Ident { uid, type_: *type_ });
             }
             Expr::Add { left, right, view } => {
                 let left = self.check_expr(sym, left)?;
@@ -487,7 +376,7 @@ where
                     for (formal, arg) in args_formal.iter().zip(arguments.iter()) {
                         let view = arg.view();
                         let arg = self.check_expr(sym, arg)?;
-                        if !Self::is_assignment_compatible(formal, &arg.type_()) {
+                        if !Self::is_assignment_compatible(*formal, arg.type_()) {
                             return err(view, "argument is wrong type");
                         }
                         args.push(arg);
@@ -508,7 +397,7 @@ where
         }
     }
 
-    fn is_assignment_compatible(to: &Type<'b>, value: &Type<'b>) -> bool {
+    fn is_assignment_compatible(to: Type<'b>, value: Type<'b>) -> bool {
         match value {
             Type::None => return true,
             _ => {}
@@ -519,13 +408,5 @@ where
             Type::None => false,
             x => x == value,
         };
-    }
-
-    fn cast_to_float(&mut self, value: &'b TExpr<'b>) -> &'b mut TExpr<'b> {
-        return self.buckets.add(TExpr::Call {
-            callee_uid: FLOAT_IDX,
-            arguments: ref_to_slice(value),
-            type_: Type::Float,
-        });
     }
 }

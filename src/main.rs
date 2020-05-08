@@ -74,7 +74,6 @@ fn run_on_string<'b>(
 
     let mut asmer = assembler::Assembler::new();
     let ops = asmer.assemble_program(program);
-    // let ops = assembler::convert_program_to_ops(program);
     buckets.drop();
     write!(stderr, "{:?}\n\n", ops).expect("why did this fail?");
     let mut run = runtime::Runtime::new(output);
