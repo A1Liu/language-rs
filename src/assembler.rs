@@ -37,7 +37,9 @@ impl Assembler {
     pub fn assemble_program(&mut self, stmts: &[TStmt]) -> Vec<Opcode> {
         let mut program = Vec::new();
         self.assemble_stmts(0, &mut program, stmts, 0);
+
         let mut function_translations = HashMap::new();
+        function_translations.insert(0, 0);
 
         for (id, mut stmts) in self.functions.drain() {
             let function_offset = program.len() as u32;
@@ -50,6 +52,7 @@ impl Assembler {
                 Opcode::Call(func) => *func = function_translations[func],
                 Opcode::JumpIf(label) => {
                     let op_loc = self.labels[*label as usize];
+                    println!("{:?}", op_loc);
                     *label = function_translations[&op_loc.function_index] + op_loc.offset;
                 }
                 Opcode::Jump(label) => {
@@ -121,7 +124,7 @@ impl Assembler {
                     current.push(Opcode::JumpIf(true_label));
                     self.assemble_stmts(function_index, current, if_false, return_index);
                     current.push(Opcode::Jump(end_label));
-                    self.attach_label(end_label, current.len() as u32);
+                    self.attach_label(true_label, current.len() as u32);
                     self.assemble_stmts(function_index, current, if_true, return_index);
                     self.attach_label(end_label, current.len() as u32);
                 }

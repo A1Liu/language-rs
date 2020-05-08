@@ -1,7 +1,7 @@
 use crate::runtime::*;
 use crate::syntax_tree::*;
 use crate::type_checker::*;
-use crate::util::Buckets;
+use crate::util::{newr, Buckets};
 use std::collections::HashMap;
 
 pub const PRINT_IDX: u32 = 0;
@@ -32,6 +32,7 @@ pub fn builtin_symbols<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, Sym
             uid: 1,
             return_type: none_type,
             arguments: any_arg,
+            view: newr(0, 0),
         },
     );
     return map;

@@ -9,7 +9,7 @@ use std::str::from_utf8_unchecked_mut;
 
 const BUCKET_SIZE: usize = 1024 * 1024;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct CRange {
     pub start: u32,
     pub end: u32,

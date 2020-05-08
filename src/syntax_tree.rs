@@ -103,8 +103,8 @@ pub enum Stmt<'a> {
         value: &'a mut Expr<'a>,
     },
     If {
-        conditioned_blocks: &'a [IfBranch<'a>],
-        else_branch: &'a [Stmt<'a>],
+        conditioned_blocks: &'a mut [IfBranch<'a>],
+        else_branch: &'a mut [Stmt<'a>],
     },
     Return {
         ret_val: &'a mut Expr<'a>,
@@ -132,7 +132,7 @@ impl<'a> Type<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TExpr<'a> {
     Ident {
         stack_offset: i32,
@@ -169,7 +169,7 @@ impl<'a> TExpr<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TStmt<'a> {
     Expr(&'a TExpr<'a>),
     Declare {

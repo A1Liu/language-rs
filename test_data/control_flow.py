@@ -1,4 +1,4 @@
-if 4:
+if 0:
     print(4)
 else:
     print(5)

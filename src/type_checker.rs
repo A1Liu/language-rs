@@ -10,10 +10,12 @@ pub enum SymbolInfo<'a> {
         uid: u32,
         return_type: &'a Type<'a>,
         arguments: &'a [Type<'a>],
+        view: CRange,
     },
     Variable {
         offset: i32,
         type_: &'a Type<'a>,
+        view: CRange,
     },
 }
 
@@ -21,20 +23,28 @@ impl<'a> SymbolInfo<'a> {
     pub fn get_type(&self) -> Type<'a> {
         return match self {
             SymbolInfo::Function {
-                uid,
                 return_type,
                 arguments,
+                ..
             } => Type::Function {
                 return_type,
                 arguments,
             },
-            SymbolInfo::Variable { offset, type_ } => **type_,
+            SymbolInfo::Variable { type_, .. } => **type_,
+        };
+    }
+
+    pub fn view(&self) -> CRange {
+        use SymbolInfo::*;
+        return match self {
+            Function { view, .. } => *view,
+            Variable { view, .. } => *view,
         };
     }
 }
 
 struct SymbolTable<'a> {
-    symbols: HashMap<u32, SymbolInfo<'a>>,
+    pub symbols: HashMap<u32, SymbolInfo<'a>>,
     parent: Option<NonNull<SymbolTable<'a>>>,
 }
 
@@ -45,6 +55,7 @@ impl<'a> SymbolTable<'a> {
             parent: None,
         };
     }
+
     pub fn new<'b>(parent: &mut SymbolTable<'b>) -> Self
     where
         'b: 'a,
@@ -59,14 +70,38 @@ impl<'a> SymbolTable<'a> {
         return self.symbols.get(&symbol).map(|r| *r);
     }
 
-    pub fn declare(
-        &mut self,
-        symbol: u32,
-        info: SymbolInfo<'a>,
-        view: CRange,
-    ) -> Result<(), Error<'static>> {
+    pub fn fold_into_parent(mut self) -> Result<(), Error<'static>> {
+        for (symbol, info) in self.symbols.drain() {
+            unsafe { self.parent.unwrap().as_mut() }.declare(symbol, info)?;
+        }
+        return Ok(());
+    }
+
+    pub fn merge_parallel_tables<'b>(
+        mut left: SymbolTable<'b>,
+        mut right: SymbolTable<'b>,
+    ) -> Result<SymbolTable<'b>, Error<'static>> {
+        assert!(left.parent == right.parent && left.parent != None);
+        let mut result = SymbolTable::new(unsafe { left.parent.unwrap().as_mut() });
+        for (id, info) in left.symbols.drain() {
+            if let Some(rinfo) = right.symbols.remove(&id) {
+                if info != rinfo {
+                    return err(info.view(), "");
+                }
+            }
+            result.declare(id, info)?;
+        }
+
+        for (id, info) in right.symbols.drain() {
+            result.declare(id, info)?;
+        }
+
+        return Ok(result);
+    }
+
+    pub fn declare(&mut self, symbol: u32, info: SymbolInfo<'a>) -> Result<(), Error<'static>> {
         if self.symbols.contains_key(&symbol) {
-            return err(view, "name already exists in scope");
+            return err(info.view(), "name already exists in scope");
         }
         self.symbols.insert(symbol, info);
         return Ok(());
@@ -144,8 +179,7 @@ where
 
                     let mut arg_types = Vec::new();
                     for arg in arguments.iter() {
-                        let arg_type;
-                        arg_type = **unwrap_err(
+                        let arg_type = **unwrap_err(
                             self.types.get(&arg.type_name),
                             arg.view,
                             "type doesn't exist",
@@ -161,8 +195,8 @@ where
                             uid: self.next_uid,
                             return_type: decl_return_type,
                             arguments: arg_types,
+                            view: *name_view,
                         },
-                        *name_view,
                     )?;
                     self.next_uid += 1;
                 }
@@ -235,8 +269,8 @@ where
                         SymbolInfo::Variable {
                             type_: decl_type,
                             offset: current_offset,
+                            view: *name_view,
                         },
-                        *name_view,
                     )?;
 
                     let expr = self.check_expr(sym, value)?;
@@ -257,7 +291,7 @@ where
 
                     let to_type;
                     let to_offset;
-                    if let SymbolInfo::Variable { offset, type_ } = var_info {
+                    if let SymbolInfo::Variable { offset, type_, .. } = var_info {
                         to_type = *type_;
                         to_offset = offset;
                     } else {
@@ -297,6 +331,7 @@ where
                         uid: id,
                         return_type: rtype,
                         arguments,
+                        view,
                     } = sym.search(*name).unwrap()
                     {
                         uid = id;
@@ -315,8 +350,8 @@ where
                             SymbolInfo::Variable {
                                 type_: arg_type,
                                 offset,
+                                view: arg.view,
                             },
-                            arg.view,
                         )?;
 
                         offset -= 1;
@@ -333,6 +368,54 @@ where
                         stmts: fstmts,
                     });
                 }
+                Stmt::If {
+                    conditioned_blocks,
+                    else_branch,
+                } => {
+                    let mut sym_tables = Vec::new();
+                    let mut ifstmts = Vec::new();
+                    for conditioned_block in conditioned_blocks.iter() {
+                        let condition = self.check_expr(sym, &conditioned_block.condition)?;
+                        let mut tblock = Vec::new();
+                        let mut ifsym = SymbolTable::new(sym);
+                        self.check_stmts(
+                            conditioned_block.block,
+                            &mut ifsym,
+                            &mut tblock,
+                            return_type,
+                        )?;
+                        sym_tables.push(ifsym);
+                        ifstmts.push((condition, tblock));
+                    }
+
+                    let mut else_sym = SymbolTable::new(sym);
+                    let mut else_block = Vec::new();
+
+                    self.check_stmts(else_branch, &mut else_sym, &mut else_block, return_type)?;
+
+                    sym_tables.push(else_sym);
+
+                    // @Performance this could be faster, right now it's quadratic
+                    while sym_tables.len() > 1 {
+                        let left = sym_tables.pop().unwrap();
+                        let right = sym_tables.pop().unwrap();
+                        sym_tables.push(SymbolTable::merge_parallel_tables(left, right)?);
+                    }
+
+                    sym_tables.pop().unwrap().fold_into_parent()?;
+
+                    let mut if_false = self.buckets.add_array(else_block);
+                    for (condition, block) in ifstmts.into_iter().rev() {
+                        let condition = self.buckets.add(condition);
+                        let if_true = self.buckets.add_array(block);
+                        if_false = self.buckets.add_array(vec![TStmt::If {
+                            condition,
+                            if_true,
+                            if_false,
+                        }]);
+                    }
+                    tstmts.push(if_false[0]);
+                }
                 _ => panic!(),
             }
         }
@@ -340,11 +423,7 @@ where
         return Ok(());
     }
 
-    pub fn check_expr(
-        &mut self,
-        sym: &SymbolTable<'b>,
-        expr: &Expr,
-    ) -> Result<TExpr<'b>, Error<'b>> {
+    fn check_expr(&mut self, sym: &SymbolTable<'b>, expr: &Expr) -> Result<TExpr<'b>, Error<'b>> {
         match expr {
             Expr::Int { value, view } => {
                 return Ok(TExpr::Int(*value as i64));
@@ -356,7 +435,7 @@ where
                 let var_info = unwrap_err(sym.search(*id), *view, "referenced name doesn't exist")?;
 
                 let (offset, type_) = match var_info {
-                    SymbolInfo::Variable { offset, type_ } => (offset, type_),
+                    SymbolInfo::Variable { offset, type_, .. } => (offset, type_),
                     SymbolInfo::Function { .. } => panic!("we don't have function objects yet"),
                 };
 
@@ -397,6 +476,7 @@ where
                     uid,
                     return_type,
                     arguments: args_formal,
+                    ..
                 } = var_info
                 {
                     let mut args = Vec::new();
