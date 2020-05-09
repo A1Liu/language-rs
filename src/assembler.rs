@@ -78,7 +78,7 @@ impl Assembler {
         &mut self,
         function_index: u32,
         current: &mut Vec<Opcode>,
-        mut offsets: OffsetTable,
+        offsets: OffsetTable,
         stmts: &[TStmt],
         return_index: i32,
     ) {
@@ -86,22 +86,16 @@ impl Assembler {
             self.assemble_block(function_index, current, offsets, stmts, return_index);
         current.push(Opcode::Return);
 
-        for FuncInfo {
-            uid,
-            stmts,
-            offsets,
-            return_index,
-        } in function_queue
-        {
+        for func_info in function_queue {
             let mut current_function = Vec::new();
             self.assemble_function(
-                uid,
+                func_info.uid,
                 &mut current_function,
-                OffsetTable::new(&offsets),
-                stmts,
-                return_index,
+                OffsetTable::new(&func_info.offsets),
+                func_info.stmts,
+                func_info.return_index,
             );
-            self.functions.insert(uid, current_function);
+            self.functions.insert(func_info.uid, current_function);
         }
     }
 
@@ -197,6 +191,18 @@ impl Assembler {
 
 pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, expr: &TExpr) {
     match expr {
+        TExpr::None => {
+            ops.push(Opcode::PushNone);
+        }
+        TExpr::Bool(value) => {
+            ops.push(Opcode::MakeBool(*value));
+        }
+        TExpr::Int(value) => {
+            ops.push(Opcode::MakeInt(*value as i64));
+        }
+        TExpr::Float(value) => {
+            ops.push(Opcode::MakeFloat(*value));
+        }
         TExpr::Ident { uid, .. } => {
             ops.push(Opcode::GetLocal {
                 stack_offset: offsets.search(*uid).unwrap(),
@@ -210,12 +216,6 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, e
             } else {
                 ops.push(Opcode::AddInt);
             }
-        }
-        TExpr::Int(value) => {
-            ops.push(Opcode::MakeInt(*value as i64));
-        }
-        TExpr::Float(value) => {
-            ops.push(Opcode::MakeFloat(*value));
         }
         TExpr::Call {
             callee_uid,

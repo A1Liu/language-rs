@@ -16,6 +16,7 @@ impl ObjectHeader {
 pub enum Opcode {
     MakeInt(i64),
     MakeFloat(f64),
+    MakeBool(bool),
     AddFloat,
     AddInt,
     PushNone,
@@ -103,6 +104,12 @@ where
                 self.heap.push(FLOAT_HEADER.to_bits());
                 let ret_val = self.heap.len();
                 self.heap.push(float.to_bits());
+                self.stack.push(ret_val);
+            }
+            MakeBool(boolean) => {
+                self.heap.push(BOOL_HEADER.to_bits());
+                let ret_val = self.heap.len();
+                self.heap.push(boolean as u64);
                 self.stack.push(ret_val);
             }
             AddFloat => {
@@ -193,6 +200,10 @@ where
                         FLOAT_HEADER => {
                             write!(self.stdout, "{}\n", f64::from_bits(arg_value))
                                 .expect("should not have failed");
+                        }
+                        BOOL_HEADER => {
+                            let value = if arg_value != 0 { "True" } else { "False" };
+                            write!(self.stdout, "{}\n", value).expect("should not have failed");
                         }
                         x => {
                             panic!("got print_primitive ecall arg of invalid type {:?}", x);

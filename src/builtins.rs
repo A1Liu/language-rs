@@ -6,10 +6,11 @@ use std::collections::HashMap;
 pub const PRINT_IDX: u32 = 0;
 pub const FLOAT_IDX: u32 = 1;
 pub const INT_IDX: u32 = 2;
+pub const BOOL_IDX: u32 = 3;
 pub const UID_BEGIN: u32 = 10;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
-    let names = vec!["print", "float", "int"];
+    let names = vec!["print", "float", "int", "bool"];
     let mut names_map = HashMap::new();
     for (idx, name) in names.iter().enumerate() {
         names_map.insert(*name, idx as u32);
@@ -75,5 +76,6 @@ pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a T
     let mut map = HashMap::new();
     map.insert(FLOAT_IDX, &*buckets.add(Type::Float));
     map.insert(INT_IDX, &*buckets.add(Type::Int));
+    map.insert(BOOL_IDX, &*buckets.add(Type::Bool));
     return map;
 }

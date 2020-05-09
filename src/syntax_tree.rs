@@ -10,6 +10,9 @@ pub enum Expr<'a> {
         value: f64,
         view: CRange,
     },
+    None(CRange),
+    True(CRange),
+    False(CRange),
     Ident {
         id: u32,
         view: CRange,
@@ -43,6 +46,9 @@ impl<'a> Expr<'a> {
             Int { value, view } => *view,
             Float { value, view } => *view,
             Ident { id, view } => *view,
+            None(view) => *view,
+            True(view) => *view,
+            False(view) => *view,
             Call {
                 callee,
                 callee_view,
@@ -117,6 +123,7 @@ pub enum Type<'a> {
     Any,
     Int,
     Float,
+    Bool,
     Function {
         return_type: &'a Type<'a>,
         arguments: &'a [Type<'a>],
@@ -138,8 +145,10 @@ pub enum TExpr<'a> {
         uid: u32,
         type_: Type<'a>,
     },
+    None,
     Int(i64),
     Float(f64),
+    Bool(bool),
     Add {
         left: &'a TExpr<'a>,
         right: &'a TExpr<'a>,
@@ -162,6 +171,8 @@ impl<'a> TExpr<'a> {
             Ident { type_, .. } => *type_,
             Int(_) => Type::Int,
             Float(_) => Type::Float,
+            Bool(_) => Type::Bool,
+            None => Type::None,
             Add { type_, .. } => *type_,
             Call { type_, .. } => *type_,
             ECall { .. } => Type::None,

@@ -10,6 +10,7 @@ where
     next_uid_: u32,
     buckets: &'a mut Buckets<'b>,
     types: HashMap<u32, &'b Type<'b>>,
+    warnings: Vec<Error<'b>>,
 }
 
 impl<'a, 'b> TypeChecker<'a, 'b>
@@ -21,6 +22,7 @@ where
             next_uid_: 0,
             buckets,
             types: HashMap::new(),
+            warnings: Vec::new(),
         };
     }
 
@@ -42,7 +44,6 @@ where
 
         let mut program = Vec::new();
         for (symbol, info) in sym.symbols.drain() {
-            println!("{:?}", info);
             program.push(TStmt::Declare {
                 uid: info.uid(),
                 decl_type: self.buckets.add(info.get_type()),
@@ -322,6 +323,15 @@ where
             }
             Expr::Float { value, view } => {
                 return Ok(TExpr::Float(*value));
+            }
+            Expr::None(view) => {
+                return Ok(TExpr::None);
+            }
+            Expr::False(view) => {
+                return Ok(TExpr::Bool(false));
+            }
+            Expr::True(view) => {
+                return Ok(TExpr::Bool(true));
             }
             Expr::Ident { id, view } => {
                 let var_info = unwrap_err(sym.search(*id), *view, "referenced name doesn't exist")?;

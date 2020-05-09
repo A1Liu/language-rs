@@ -20,3 +20,5 @@ def hi(asdf: float) -> float:
 hi(12.0)
 
 print(add(12.0, 12.1, 12.2))
+print(True)
+print(False)

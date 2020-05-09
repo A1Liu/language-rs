@@ -453,6 +453,18 @@ where
                     view: newr(begin, end.get()),
                 });
             }
+            n @ None(_) => {
+                self.pop();
+                return Ok(Expr::None(n.view()));
+            }
+            t @ False(_) => {
+                self.pop();
+                return Ok(Expr::False(t.view()));
+            }
+            t @ True(_) => {
+                self.pop();
+                return Ok(Expr::True(t.view()));
+            }
             LParen(tup_begin) => {
                 let tup = self.try_parse_expr_tup()?;
                 let slice = match &tup {
