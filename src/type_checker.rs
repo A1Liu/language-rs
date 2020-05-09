@@ -46,7 +46,7 @@ where
         for (symbol, info) in sym.symbols.drain() {
             program.push(TStmt::Declare {
                 uid: info.uid(),
-                decl_type: self.buckets.add(info.get_type()),
+                decl_type: info.get_type(),
             });
         }
 
@@ -124,7 +124,7 @@ where
             match stmt {
                 Stmt::Pass => {}
                 Stmt::Expr(expr) => {
-                    let expr = self.check_expr(&sym, expr)?;
+                    let expr = self.check_expr(&mut sym, expr)?;
                     let expr = self.buckets.add(expr);
                     tstmts.push(TStmt::Expr(expr));
                 }
@@ -136,7 +136,7 @@ where
                     )?;
 
                     let ret_val_view = ret_val.view();
-                    let ret_val = self.check_expr(&sym, ret_val)?;
+                    let ret_val = self.check_expr(&mut sym, ret_val)?;
 
                     if !Self::is_assignment_compatible(return_type, ret_val.type_()) {
                         return err(ret_val_view, "returning the wrong type");
@@ -166,7 +166,7 @@ where
                         },
                     )?;
 
-                    let expr = self.check_expr(&sym, value)?;
+                    let expr = self.check_expr(&mut sym, value)?;
                     if !Self::is_assignment_compatible(*decl_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
@@ -187,7 +187,7 @@ where
                         return err(*to_view, "name being assigned to is a function");
                     }
 
-                    let expr = self.check_expr(&sym, value)?;
+                    let expr = self.check_expr(&mut sym, value)?;
                     if !Self::is_assignment_compatible(to_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
@@ -248,7 +248,7 @@ where
                     for (uid, info) in fsym.symbols.drain() {
                         fstmts.push(TStmt::Declare {
                             uid,
-                            decl_type: self.buckets.add(info.get_type()),
+                            decl_type: info.get_type(),
                         });
                     }
 
@@ -272,7 +272,7 @@ where
                     let mut sym_tables = Vec::new();
                     let mut ifstmts = Vec::new();
                     for conditioned_block in conditioned_blocks.iter() {
-                        let condition = self.check_expr(&sym, &conditioned_block.condition)?;
+                        let condition = self.check_expr(&mut sym, &conditioned_block.condition)?;
 
                         let (ifsym, tblock) = self.check_stmts(
                             conditioned_block.block,
@@ -316,13 +316,22 @@ where
         return Ok((sym, tstmts));
     }
 
-    fn check_expr(&mut self, sym: &SymbolTable<'b>, expr: &Expr) -> Result<TExpr<'b>, Error<'b>> {
+    fn check_expr(
+        &mut self,
+        sym: &mut SymbolTable<'b>,
+        expr: &Expr,
+    ) -> Result<TExpr<'b>, Error<'b>> {
         match expr {
             Expr::Int { value, view } => {
                 return Ok(TExpr::Int(*value as i64));
             }
             Expr::Float { value, view } => {
                 return Ok(TExpr::Float(*value));
+            }
+            Expr::StringLiteral { id, value, view } => {
+                let uid = self.next_uid();
+                sym.declare(*id, SymbolInfo::StringLiteral { uid, view: *view });
+                return Ok(TExpr::StringLiteral { uid });
             }
             Expr::None(view) => {
                 return Ok(TExpr::None);
@@ -337,11 +346,12 @@ where
                 let var_info = unwrap_err(sym.search(*id), *view, "referenced name doesn't exist")?;
 
                 let (uid, type_) = match var_info {
-                    SymbolInfo::Variable { uid, type_, .. } => (uid, type_),
+                    SymbolInfo::Variable { uid, type_, .. } => (uid, *type_),
+                    SymbolInfo::StringLiteral { uid, .. } => (uid, Type::String),
                     SymbolInfo::Function { .. } => panic!("we don't have function objects yet"),
                 };
 
-                return Ok(TExpr::Ident { uid, type_: *type_ });
+                return Ok(TExpr::Ident { uid, type_ });
             }
             Expr::Add { left, right, view } => {
                 let left = self.check_expr(sym, left)?;

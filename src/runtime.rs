@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::slice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ObjectHeader {
@@ -14,6 +15,11 @@ impl ObjectHeader {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Opcode {
+    // Data segment opcodes
+    BeginStringData(u64), // take the next many bytes of string data
+    StringData(u64),
+
+    // Text segment opcodes
     MakeInt(i64),
     MakeFloat(f64),
     MakeBool(bool),
@@ -58,6 +64,7 @@ const BOOL_HEADER: ObjectHeader = ObjectHeader {
     type_index: 2,
     object_size: 1,
 };
+const STRING_TYPE_INDEX: u32 = 3;
 
 pub const PRINT_PRIMITIVE: u64 = 0;
 pub const FLOAT_CAST: u64 = 1;
@@ -94,6 +101,9 @@ where
     fn run_op(&mut self, op: Opcode) {
         use Opcode::*;
         match op {
+            BeginStringData(_) | StringData(_) => {
+                panic!("StringDdata not supported in text section");
+            }
             MakeInt(int) => {
                 self.heap.push(INT_HEADER.to_bits());
                 let ret_val = self.heap.len();
@@ -204,6 +214,18 @@ where
                         BOOL_HEADER => {
                             let value = if arg_value != 0 { "True" } else { "False" };
                             write!(self.stdout, "{}\n", value).expect("should not have failed");
+                        }
+                        ObjectHeader {
+                            type_index: STRING_TYPE_INDEX,
+                            object_size,
+                        } => {
+                            let str_begin = (&self.heap[arg]) as *const u64 as *const u8;
+                            let str_bytes =
+                                unsafe { slice::from_raw_parts(str_begin, object_size as usize) };
+                            write!(self.stdout, "{}\n", unsafe {
+                                std::str::from_utf8_unchecked(str_bytes)
+                            })
+                            .expect("should not have failed");
                         }
                         x => {
                             panic!("got print_primitive ecall arg of invalid type {:?}", x);

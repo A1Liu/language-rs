@@ -203,6 +203,11 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, e
         TExpr::Float(value) => {
             ops.push(Opcode::MakeFloat(*value));
         }
+        TExpr::StringLiteral { uid } => {
+            ops.push(Opcode::GetGlobal {
+                stack_offset: offsets.search(*uid).unwrap() as u32,
+            });
+        }
         TExpr::Ident { uid, .. } => {
             ops.push(Opcode::GetLocal {
                 stack_offset: offsets.search(*uid).unwrap(),

@@ -50,6 +50,11 @@ pub enum Token {
         begin: u32,
         end: NonZeroU32,
     },
+    String {
+        id: u32,
+        view: CRange,
+    },
+    IncompleteString(CRange),
 }
 
 impl Token {
@@ -79,6 +84,8 @@ impl Token {
             Indent { begin, end } => newr(begin, end),
             Integer { value, begin, end } => newr(begin, end.get()),
             FloatingPoint { value, begin, end } => newr(begin, end.get()),
+            String { view, .. } => view,
+            IncompleteString(x) => x,
             Dedent(x) => newr(x, x),
             UnknownDedent(x) => newr(x, x),
             Unknown { begin, end } => newr(begin, end),
@@ -99,6 +106,7 @@ pub struct Lexer<'a> {
     pub data: &'a [u8],
     pub id_list: Vec<&'a str>,
     pub id_map: HashMap<&'a str, u32>,
+    pub string_map: HashMap<&'a str, u32>,
     indent_stack: Vec<u16>,
     index: u32,
     indent_level: u16,
@@ -113,6 +121,7 @@ impl<'a> Lexer<'a> {
             data: data.as_bytes(),
             id_list,
             id_map,
+            string_map: HashMap::new(),
             indent_stack: vec![0],
             index: 0,
             indent_level: 0,
@@ -137,7 +146,7 @@ impl<'a> Lexer<'a> {
         };
     }
 
-    fn substr<'b>(&'b self, start: u32, end: u32) -> &'a str {
+    pub fn substr<'b>(&'b self, start: u32, end: u32) -> &'a str {
         return unsafe { from_utf8_unchecked(&self.data[(start as usize)..(end as usize)]) };
     }
 
@@ -146,10 +155,15 @@ impl<'a> Lexer<'a> {
         return self.data[self.index as usize];
     }
 
+    #[inline]
+    fn at_end(&self) -> bool {
+        return self.index == self.data.len() as u32;
+    }
+
     fn next_indent(&mut self) -> Token {
         let mut indent_level: u16 = 0;
         let mut begin = self.index;
-        while self.index < self.data.len() as u32 {
+        while !self.at_end() {
             match self.cur() {
                 b'\n' => {
                     indent_level = 0;
@@ -158,7 +172,7 @@ impl<'a> Lexer<'a> {
                 }
                 b' ' => {
                     indent_level += 1;
-                    self.index += 1;
+                    self.index += 2;
                 }
                 b'\t' => {
                     indent_level += 8 - indent_level % 8;
@@ -175,7 +189,7 @@ impl<'a> Lexer<'a> {
             self.state = LexerState::Dedent;
             self.indent_level = indent_level;
             return self.next_dedent();
-        } else if self.index == self.data.len() as u32 {
+        } else if self.at_end() {
             self.state = LexerState::End;
             return Token::End(self.index);
         } else if indent_level == prev_indent {
@@ -213,12 +227,11 @@ impl<'a> Lexer<'a> {
 
     fn next_normal(&mut self) -> Token {
         loop {
-            while self.index < self.data.len() as u32 && (self.cur() == b' ' || self.cur() == b'\t')
-            {
+            while !self.at_end() && (self.cur() == b' ' || self.cur() == b'\t') {
                 self.index += 1;
             }
 
-            if self.index == self.data.len() as u32 {
+            if self.at_end() {
                 self.state = LexerState::End;
                 return Token::End(self.index);
             }
@@ -274,21 +287,53 @@ impl<'a> Lexer<'a> {
                     }
                     continue;
                 }
-                b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9' => {
+                b'"' => {
+                    self.index += 1;
                     let begin = self.index;
-                    while self.index < self.data.len() as u32
-                        && self.cur() <= b'9'
-                        && self.cur() >= b'0'
-                    {
+                    let mut escaped = false;
+                    while !self.at_end() {
+                        if self.cur() == b'"' && !escaped {
+                            break;
+                        }
+
+                        if self.cur() == b'\\' {
+                            escaped = !escaped;
+                        } else {
+                            escaped = false;
+                        }
+
                         self.index += 1;
                     }
 
-                    if self.index < self.data.len() as u32 && self.cur() == b'.' {
+                    if self.at_end() {
+                        Token::IncompleteString(newr(begin, self.index))
+                    } else {
+                        let substr = self.substr(begin, self.index);
+                        let id = if let Some(id) = self.string_map.get(substr) {
+                            *id
+                        } else {
+                            let id = self.id_list.len() as u32;
+                            self.string_map.insert(substr, id);
+                            id
+                        };
+
+                        let tok = Token::String {
+                            id,
+                            view: newr(begin, self.index),
+                        };
                         self.index += 1;
-                        while self.index < self.data.len() as u32
-                            && self.cur() <= b'9'
-                            && self.cur() >= b'0'
-                        {
+                        tok
+                    }
+                }
+                b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'8' | b'9' => {
+                    let begin = self.index;
+                    while !self.at_end() && self.cur() <= b'9' && self.cur() >= b'0' {
+                        self.index += 1;
+                    }
+
+                    if !self.at_end() && self.cur() == b'.' {
+                        self.index += 1;
+                        while !self.at_end() && self.cur() <= b'9' && self.cur() >= b'0' {
                             self.index += 1;
                         }
                         Token::FloatingPoint {
@@ -321,14 +366,14 @@ impl<'a> Lexer<'a> {
                 }
             };
 
-            if self.index == self.data.len() as u32 {
+            if self.at_end() {
                 self.state = LexerState::End;
             }
             return ret_val;
         }
 
         let begin = self.index;
-        while self.index < self.data.len() as u32 && (self.cur() as char).is_alphanumeric() {
+        while !self.at_end() && (self.cur() as char).is_alphanumeric() {
             self.index += 1;
         }
 
