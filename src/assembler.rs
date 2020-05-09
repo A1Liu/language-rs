@@ -8,6 +8,12 @@ struct OpLoc {
     pub function_index: u32,
     pub offset: u32,
 }
+struct FuncInfo<'a> {
+    uid: u32,
+    offsets: OffsetTable,
+    stmts: &'a [TStmt<'a>],
+    return_index: i32,
+}
 
 pub struct Assembler {
     functions: HashMap<u32, Vec<Opcode>>,
@@ -38,7 +44,7 @@ impl Assembler {
     pub fn assemble_program(&mut self, stmts: &[TStmt]) -> Vec<Opcode> {
         let mut program = Vec::new();
         let offsets = OffsetTable::new_global(HashMap::new());
-        self.assemble_stmts(0, &mut program, offsets, stmts, 0);
+        self.assemble_function(0, &mut program, offsets, stmts, 0);
 
         let mut function_translations = HashMap::new();
         function_translations.insert(0, 0);
@@ -68,7 +74,7 @@ impl Assembler {
         return program;
     }
 
-    fn assemble_stmts(
+    fn assemble_function(
         &mut self,
         function_index: u32,
         current: &mut Vec<Opcode>,
@@ -76,6 +82,37 @@ impl Assembler {
         stmts: &[TStmt],
         return_index: i32,
     ) {
+        let function_queue =
+            self.assemble_block(function_index, current, offsets, stmts, return_index);
+        current.push(Opcode::Return);
+
+        for FuncInfo {
+            uid,
+            stmts,
+            offsets,
+            return_index,
+        } in function_queue
+        {
+            let mut current_function = Vec::new();
+            self.assemble_function(
+                uid,
+                &mut current_function,
+                OffsetTable::new(&offsets),
+                stmts,
+                return_index,
+            );
+            self.functions.insert(uid, current_function);
+        }
+    }
+
+    fn assemble_block<'a>(
+        &mut self,
+        function_index: u32,
+        current: &mut Vec<Opcode>,
+        mut offsets: OffsetTable,
+        stmts: &'a [TStmt<'a>],
+        return_index: i32,
+    ) -> Vec<FuncInfo<'a>> {
         let mut function_queue = Vec::new();
         let mut decl_index = 0;
         for stmt in stmts {
@@ -101,10 +138,6 @@ impl Assembler {
                         stack_offset: return_index,
                     });
 
-                    for _ in 0..decl_index {
-                        current.push(Opcode::Pop);
-                    }
-
                     current.push(Opcode::Return);
                 }
                 TStmt::If {
@@ -118,7 +151,7 @@ impl Assembler {
                     let end_label = self.create_label(function_index);
 
                     current.push(Opcode::JumpIf(true_label));
-                    self.assemble_stmts(
+                    self.assemble_block(
                         function_index,
                         current,
                         OffsetTable::new(&offsets),
@@ -127,7 +160,7 @@ impl Assembler {
                     );
                     current.push(Opcode::Jump(end_label));
                     self.attach_label(true_label, current.len() as u32);
-                    self.assemble_stmts(
+                    self.assemble_block(
                         function_index,
                         current,
                         OffsetTable::new(&offsets),
@@ -149,31 +182,16 @@ impl Assembler {
                         offsets.declare(*uid, offset);
                         offset -= 1;
                     }
-                    function_queue.push((
-                        *uid,
-                        *stmts,
+                    function_queue.push(FuncInfo {
+                        uid: *uid,
+                        stmts: *stmts,
                         offsets,
-                        -(argument_types.len() as i32) - 1,
-                    ));
+                        return_index: -(argument_types.len() as i32) - 1,
+                    });
                 }
             }
         }
-
-        for _ in 0..decl_index {
-            current.push(Opcode::Pop);
-        }
-        current.push(Opcode::Return);
-        for (uid, stmts, offsets, return_idx) in function_queue {
-            let mut current_function = Vec::new();
-            self.assemble_stmts(
-                uid,
-                &mut current_function,
-                OffsetTable::new(&offsets),
-                stmts,
-                return_idx,
-            );
-            self.functions.insert(uid, current_function);
-        }
+        return function_queue;
     }
 }
 

@@ -171,6 +171,10 @@ where
                 return;
             }
             Return => {
+                while self.stack.len() > self.fp {
+                    self.stack.pop();
+                }
+
                 self.fp = self.fp_ra_stack.pop().unwrap();
                 self.pc = self.fp_ra_stack.pop().unwrap();
                 return;
