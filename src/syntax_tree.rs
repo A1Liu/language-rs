@@ -13,11 +13,6 @@ pub enum Expr<'a> {
     None(CRange),
     True(CRange),
     False(CRange),
-    StringLiteral {
-        id: u32,
-        value: &'a str,
-        view: CRange,
-    },
     Ident {
         id: u32,
         view: CRange,
@@ -50,7 +45,6 @@ impl<'a> Expr<'a> {
         return match self {
             Int { view, .. } => *view,
             Float { view, .. } => *view,
-            StringLiteral { view, .. } => *view,
             Ident { id, view } => *view,
             None(view) => *view,
             True(view) => *view,
@@ -130,7 +124,6 @@ pub enum Type<'a> {
     Int,
     Float,
     Bool,
-    String,
     Function {
         return_type: &'a Type<'a>,
         arguments: &'a [Type<'a>],
@@ -156,9 +149,6 @@ pub enum TExpr<'a> {
     Int(i64),
     Float(f64),
     Bool(bool),
-    StringLiteral {
-        uid: u32,
-    },
     Add {
         left: &'a TExpr<'a>,
         right: &'a TExpr<'a>,
@@ -182,7 +172,6 @@ impl<'a> TExpr<'a> {
             Int(_) => Type::Int,
             Float(_) => Type::Float,
             Bool(_) => Type::Bool,
-            StringLiteral { .. } => Type::String,
             None => Type::None,
             Add { type_, .. } => *type_,
             Call { type_, .. } => *type_,

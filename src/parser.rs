@@ -467,10 +467,11 @@ where
             }
             String { id, view } => {
                 self.pop();
-                let substr = self.lexer.substr(view.start, view.end);
-                let value = unwrap_err(unescape(substr), view, "invalid escape sequence")?;
-                let value = self.buckets.add_str(&value);
-                return Ok(Expr::StringLiteral { id, value, view });
+                panic!("not implemented yet");
+                // let substr = self.lexer.substr(view.start, view.end);
+                // let value = unwrap_err(unescape(substr), view, "invalid escape sequence")?;
+                // let value = self.buckets.add_str(&value);
+                // return Ok(Expr::StringLiteral { id, value, view });
             }
             LParen(tup_begin) => {
                 let tup = self.try_parse_expr_tup()?;

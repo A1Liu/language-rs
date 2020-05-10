@@ -1,5 +1,6 @@
 use crate::runtime::*;
 use crate::syntax_tree::*;
+use crate::type_checker::*;
 use crate::util::*;
 use std::collections::HashMap;
 
@@ -78,6 +79,5 @@ pub fn builtin_types<'a, 'b>(buckets: &'b mut Buckets<'a>) -> HashMap<u32, &'a T
     map.insert(FLOAT_IDX, &*buckets.add(Type::Float));
     map.insert(INT_IDX, &*buckets.add(Type::Int));
     map.insert(BOOL_IDX, &*buckets.add(Type::Bool));
-    map.insert(STR_IDX, &*buckets.add(Type::String));
     return map;
 }

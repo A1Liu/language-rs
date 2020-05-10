@@ -1,4 +1,3 @@
-use crate::syntax_tree::Type;
 use std::alloc::{alloc, dealloc, Layout};
 use std::char;
 use std::collections::HashMap;
@@ -85,59 +84,6 @@ pub fn ref_to_slice<T>(data: &T) -> &[T] {
     return unsafe { from_raw_parts(data, 1) };
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum SymbolInfo<'a> {
-    Function {
-        uid: u32,
-        return_type: &'a Type<'a>,
-        arguments: &'a [Type<'a>],
-        view: CRange,
-    },
-    Variable {
-        uid: u32,
-        type_: &'a Type<'a>,
-        view: CRange,
-    },
-    StringLiteral {
-        uid: u32,
-        view: CRange,
-    },
-}
-
-impl<'a> SymbolInfo<'a> {
-    pub fn get_type(&self) -> Type<'a> {
-        return match self {
-            SymbolInfo::Function {
-                return_type,
-                arguments,
-                ..
-            } => Type::Function {
-                return_type,
-                arguments,
-            },
-            SymbolInfo::Variable { type_, .. } => **type_,
-            SymbolInfo::StringLiteral { .. } => Type::String,
-        };
-    }
-
-    pub fn view(&self) -> CRange {
-        use SymbolInfo::*;
-        return match self {
-            Function { view, .. } => *view,
-            Variable { view, .. } => *view,
-            StringLiteral { view, .. } => *view,
-        };
-    }
-
-    pub fn uid(&self) -> u32 {
-        return match self {
-            SymbolInfo::Function { uid, .. } => *uid,
-            SymbolInfo::Variable { uid, .. } => *uid,
-            SymbolInfo::StringLiteral { uid, .. } => *uid,
-        };
-    }
-}
-
 pub struct OffsetTable {
     pub uids: HashMap<u32, i32>,
     parent: Option<NonNull<OffsetTable>>,
@@ -176,91 +122,6 @@ impl OffsetTable {
             } else if let Some(parent) = current.as_ref().parent {
                 current = parent;
                 uids = NonNull::from(&current.as_ref().uids);
-            } else {
-                return None;
-            }
-        }
-    }
-}
-
-pub struct SymbolTable<'a> {
-    pub symbols: HashMap<u32, SymbolInfo<'a>>,
-    parent: Option<NonNull<SymbolTable<'a>>>,
-}
-
-impl<'a> SymbolTable<'a> {
-    pub fn new_global(symbols: HashMap<u32, SymbolInfo<'a>>) -> Self {
-        return Self {
-            symbols,
-            parent: None,
-        };
-    }
-
-    pub fn new<'b>(parent: &SymbolTable<'b>) -> Self
-    where
-        'b: 'a,
-    {
-        return Self {
-            symbols: HashMap::new(),
-            parent: Some(NonNull::from(parent)),
-        };
-    }
-
-    pub fn search_current(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        return self.symbols.get(&symbol).map(|r| *r);
-    }
-
-    pub fn fold_into_parent(mut self) -> Result<(), Error<'static>> {
-        for (symbol, info) in self.symbols.drain() {
-            unsafe { self.parent.unwrap().as_mut() }.declare(symbol, info)?;
-        }
-        return Ok(());
-    }
-
-    pub fn merge_parallel_tables<'b>(
-        mut left: SymbolTable<'b>,
-        mut right: SymbolTable<'b>,
-    ) -> Result<SymbolTable<'b>, Error<'static>> {
-        assert!(left.parent == right.parent && left.parent != None);
-        let mut result = SymbolTable::new(unsafe { left.parent.unwrap().as_mut() });
-        for (id, info) in left.symbols.drain() {
-            if let Some(rinfo) = right.symbols.remove(&id) {
-                if info != rinfo {
-                    return err(info.view(), "");
-                }
-            }
-            result.declare(id, info)?;
-        }
-
-        for (id, info) in right.symbols.drain() {
-            result.declare(id, info)?;
-        }
-
-        return Ok(result);
-    }
-
-    pub fn declare(&mut self, symbol: u32, info: SymbolInfo<'a>) -> Result<(), Error<'static>> {
-        if self.symbols.contains_key(&symbol) {
-            return err(info.view(), "name already exists in scope");
-        }
-        self.symbols.insert(symbol, info);
-        return Ok(());
-    }
-
-    pub fn search(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        return unsafe { self.search_unsafe(symbol) };
-    }
-
-    unsafe fn search_unsafe(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        let mut current = NonNull::from(self);
-        let mut symbols = NonNull::from(&current.as_ref().symbols);
-
-        loop {
-            if let Some(info) = symbols.as_ref().get(&symbol) {
-                return Some(*info);
-            } else if let Some(parent) = current.as_ref().parent {
-                current = parent;
-                symbols = NonNull::from(&current.as_ref().symbols);
             } else {
                 return None;
             }
