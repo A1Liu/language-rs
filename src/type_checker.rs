@@ -395,6 +395,29 @@ where
                         stmts: fblock,
                     });
                 }
+                Stmt::While {
+                    condition,
+                    block,
+                    else_branch,
+                } => {
+                    let condition = self.check_expr(&mut sym, condition)?;
+                    let (while_sym, block) =
+                        self.check_stmts(block, SymbolTable::new(&sym), return_type)?;
+                    while_sym.fold_into_parent()?;
+                    let (else_sym, else_block) =
+                        self.check_stmts(else_branch, SymbolTable::new(&sym), return_type)?;
+                    else_sym.fold_into_parent()?;
+
+                    let condition = self.buckets.add(condition);
+                    let block = self.buckets.add_array(block);
+                    let else_block = self.buckets.add_array(else_block);
+
+                    tstmts.push(TStmt::While {
+                        condition,
+                        block,
+                        else_block,
+                    });
+                }
                 Stmt::If {
                     conditioned_blocks,
                     else_branch,

@@ -209,6 +209,11 @@ pub enum TStmt<'a> {
         if_true: &'a [TStmt<'a>],
         if_false: &'a [TStmt<'a>],
     },
+    While {
+        condition: &'a TExpr<'a>,
+        block: &'a [TStmt<'a>],
+        else_block: &'a [TStmt<'a>],
+    },
     Return {
         ret_val: &'a TExpr<'a>,
     },

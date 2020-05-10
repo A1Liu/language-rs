@@ -89,16 +89,16 @@ pub struct OffsetTable {
     parent: Option<NonNull<OffsetTable>>,
 }
 
+pub fn offsets_(parent: &OffsetTable) -> OffsetTable {
+    return OffsetTable {
+        uids: HashMap::new(),
+        parent: Some(NonNull::from(parent)),
+    };
+}
+
 impl OffsetTable {
     pub fn new_global(uids: HashMap<u32, i32>) -> Self {
         return Self { uids, parent: None };
-    }
-
-    pub fn new(parent: &OffsetTable) -> Self {
-        return Self {
-            uids: HashMap::new(),
-            parent: Some(NonNull::from(parent)),
-        };
     }
 
     pub fn declare(&mut self, symbol: u32, offset: i32) {

@@ -1,6 +1,6 @@
 use crate::runtime::*;
 use crate::syntax_tree::*;
-use crate::util::OffsetTable;
+use crate::util::*;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -72,10 +72,12 @@ impl Assembler {
 
         self.assemble_block(
             AsmContext::Global,
+            None,
             &mut program,
             offsets,
             program_tree.stmts,
         );
+
         program.push(Opcode::Return);
 
         let mut function_translations = HashMap::new();
@@ -118,7 +120,7 @@ impl Assembler {
         stmts: &[TStmt],
         parent: &OffsetTable,
     ) -> Vec<Opcode> {
-        let mut offsets = OffsetTable::new(parent);
+        let mut offsets = offsets_(parent);
         let mut offset = -1;
         for uid in argument_uids.iter() {
             offsets.declare(*uid, offset);
@@ -140,6 +142,7 @@ impl Assembler {
                 function_index: uid,
                 return_index: -(argument_uids.len() as i32) - 1,
             },
+            None,
             &mut current,
             offsets,
             stmts,
@@ -151,6 +154,7 @@ impl Assembler {
     fn assemble_block<'a>(
         &mut self,
         context: AsmContext,
+        loop_label: Option<u32>,
         current: &mut Vec<Opcode>,
         offsets: OffsetTable,
         stmts: &'a [TStmt<'a>],
@@ -193,11 +197,29 @@ impl Assembler {
                     let end_label = self.create_label(context.func_idx());
 
                     current.push(Opcode::JumpNotIf(false_label));
-                    self.assemble_block(context, current, OffsetTable::new(&offsets), if_true);
+                    self.assemble_block(context, loop_label, current, offsets_(&offsets), if_true);
                     current.push(Opcode::Jump(end_label));
                     self.attach_label(false_label, current.len() as u32);
-                    self.assemble_block(context, current, OffsetTable::new(&offsets), if_false);
+                    self.assemble_block(context, loop_label, current, offsets_(&offsets), if_false);
                     self.attach_label(end_label, current.len() as u32);
+                }
+                TStmt::While {
+                    condition,
+                    block,
+                    else_block: e_block,
+                } => {
+                    let begin = self.create_label(context.func_idx());
+                    let else_branch = self.create_label(context.func_idx());
+                    let end = self.create_label(context.func_idx());
+
+                    self.attach_label(begin, current.len() as u32);
+                    convert_expression_to_ops(current, &offsets, condition);
+                    current.push(Opcode::JumpNotIf(else_branch));
+                    self.assemble_block(context, Some(end), current, offsets_(&offsets), block);
+                    current.push(Opcode::Jump(begin));
+                    self.attach_label(else_branch, current.len() as u32);
+                    self.assemble_block(context, loop_label, current, offsets_(&offsets), e_block);
+                    self.attach_label(end, current.len() as u32);
                 }
                 TStmt::Function {
                     uid,
