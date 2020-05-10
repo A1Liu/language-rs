@@ -112,6 +112,12 @@ pub enum Stmt<'a> {
         conditioned_blocks: &'a mut [IfBranch<'a>],
         else_branch: &'a mut [Stmt<'a>],
     },
+    While {
+        condition: &'a mut Expr<'a>,
+        block: &'a mut [Stmt<'a>],
+        else_branch: &'a mut [Stmt<'a>],
+    },
+    Break,
     Return {
         ret_val: &'a mut Expr<'a>,
     },
@@ -196,7 +202,7 @@ pub enum TStmt<'a> {
         uid: u32,
         argument_uids: &'a [u32],
         declarations: &'a [Declaration],
-        stmts: &'a [TStmt<'a>], // TODO separate declarations from statements
+        stmts: &'a [TStmt<'a>],
     },
     If {
         condition: &'a TExpr<'a>,

@@ -14,6 +14,8 @@ pub enum Token {
     If(u32),
     Else(u32),
     Elif(u32),
+    While(u32),
+    Break(u32),
     Ident {
         id: u32,
         view: CRange,
@@ -69,6 +71,8 @@ impl Token {
             If(x) => newr(x, x + 2),
             Else(x) => newr(x, x + 4),
             Elif(x) => newr(x, x + 4),
+            While(x) => newr(x, x + 5),
+            Break(x) => newr(x, x + 5),
             Ident { id, view } => view,
             LParen(x) => newr(x, x + 1),
             RParen(x) => newr(x, x + 1),
@@ -156,7 +160,7 @@ impl<'a> Lexer<'a> {
     }
 
     #[inline]
-    fn at_end(&self) -> bool {
+    pub fn at_end(&self) -> bool {
         return self.index == self.data.len() as u32;
     }
 
@@ -384,6 +388,8 @@ impl<'a> Lexer<'a> {
             "if" => Token::If(begin),
             "else" => Token::Else(begin),
             "elif" => Token::Elif(begin),
+            "while" => Token::While(begin),
+            "break" => Token::Break(begin),
             "None" => Token::None(begin),
             "True" => Token::True(begin),
             "False" => Token::False(begin),

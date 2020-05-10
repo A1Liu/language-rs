@@ -32,9 +32,10 @@ pub enum Opcode {
     GetLocal { stack_offset: i32 },
     SetLocal { stack_offset: i32 },
     Return,
-    Call(u32),   // absolute address
-    JumpIf(u32), // absolute address
-    Jump(u32),   // absolute address
+    Call(u32),      // absolute address
+    JumpIf(u32),    // absolute address
+    JumpNotIf(u32), // absolute address
+    Jump(u32),      // absolute address
     ECall,
 }
 
@@ -161,22 +162,20 @@ where
                 self.pc = address as usize;
                 return;
             }
+            JumpNotIf(address) => {
+                let arg = self.stack.pop().unwrap();
+
+                if !self.eval_bool(arg) {
+                    self.pc = address as usize;
+                    return;
+                }
+            }
             JumpIf(address) => {
                 let arg = self.stack.pop().unwrap();
 
-                if arg != NONE_VALUE {
-                    let should_jump = match self.get_obj_header(arg) {
-                        INT_HEADER | BOOL_HEADER => self.heap[arg] != 0,
-                        FLOAT_HEADER => f64::from_bits(self.heap[arg]) != 0.0,
-                        x => {
-                            panic!("attempting to use value as boolean with type: {:?}\n", x);
-                        }
-                    };
-
-                    if should_jump {
-                        self.pc = address as usize;
-                        return;
-                    }
+                if self.eval_bool(arg) {
+                    self.pc = address as usize;
+                    return;
                 }
             }
             Call(func) => {
@@ -257,5 +256,18 @@ where
             },
         }
         self.pc += 1;
+    }
+
+    fn eval_bool(&self, value: usize) -> bool {
+        if value == NONE_VALUE {
+            return true;
+        }
+        return match self.get_obj_header(value) {
+            INT_HEADER | BOOL_HEADER => self.heap[value] != 0,
+            FLOAT_HEADER => f64::from_bits(self.heap[value]) != 0.0,
+            x => {
+                panic!("attempting to use value as boolean with type: {:?}\n", x);
+            }
+        };
     }
 }

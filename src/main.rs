@@ -40,6 +40,12 @@ fn run_on_string<'b>(
     file_id: usize,
     input: &str,
 ) -> Result<(), Diagnostic<usize>> {
+    let mut l = lexer::Lexer::new(input);
+
+    while !l.at_end() {
+        println!("{:?}", l.next());
+    }
+
     let mut parser = parser::Parser::new(buckets, input);
     let parse_result = parser.try_parse_program();
 

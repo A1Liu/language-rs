@@ -59,6 +59,11 @@ where
     pub fn try_parse_stmt(&mut self) -> Result<Stmt<'b>, Error<'b>> {
         use Token::*;
         match self.peek() {
+            Break(_) => {
+                self.pop();
+                self.expect_newline()?;
+                return Ok(Stmt::Break);
+            }
             Pass(_) => {
                 self.pop();
                 self.expect_newline()?;
@@ -71,6 +76,29 @@ where
                 self.expect_newline()?;
                 let expr = self.buckets.add(expr);
                 return Ok(Stmt::Return { ret_val: expr });
+            }
+            While(_) => {
+                self.pop();
+                let condition = self.try_parse_expr()?;
+                self.expect_colon()?;
+                self.expect_newline()?;
+                let block = self.try_parse_block()?;
+                let else_branch = match self.peek() {
+                    Else(_) => {
+                        self.pop();
+                        self.expect_colon()?;
+                        self.expect_newline()?;
+                        self.try_parse_block()?
+                    }
+                    _ => self.buckets.add_array(vec![]),
+                };
+
+                let condition = self.buckets.add(condition);
+                return Ok(Stmt::While {
+                    condition,
+                    block,
+                    else_branch,
+                });
             }
             If(_) => {
                 self.pop();
