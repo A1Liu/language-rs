@@ -181,22 +181,22 @@ impl<'a> TExpr<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub struct Declaration {
+    pub uid: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum TStmt<'a> {
     Expr(&'a TExpr<'a>),
-    Declare {
-        decl_type: Type<'a>,
-        uid: u32,
-    },
     Assign {
         uid: u32,
         value: &'a TExpr<'a>,
     },
     Function {
         uid: u32,
-        return_type: &'a Type<'a>,
         argument_uids: &'a [u32],
-        argument_types: &'a [Type<'a>],
-        stmts: &'a [TStmt<'a>],
+        declarations: &'a [Declaration],
+        stmts: &'a [TStmt<'a>], // TODO separate declarations from statements
     },
     If {
         condition: &'a TExpr<'a>,
@@ -206,4 +206,10 @@ pub enum TStmt<'a> {
     Return {
         ret_val: &'a TExpr<'a>,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TProgram<'a> {
+    pub declarations: &'a [Declaration],
+    pub stmts: &'a [TStmt<'a>],
 }

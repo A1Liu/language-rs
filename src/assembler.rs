@@ -8,11 +8,30 @@ struct OpLoc {
     pub function_index: u32,
     pub offset: u32,
 }
+
 struct FuncInfo<'a> {
     uid: u32,
-    offsets: OffsetTable,
-    stmts: &'a [TStmt<'a>],
-    return_index: i32,
+    argument_uids: &'a [u32],
+    declarations: &'a [Declaration],
+    stmts: &'a [TStmt<'a>], // TODO separate declarations from statements
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AsmContext {
+    Function {
+        function_index: u32,
+        return_index: i32,
+    },
+    Global,
+}
+
+impl AsmContext {
+    pub fn func_idx(&self) -> u32 {
+        match self {
+            Self::Global => 0,
+            Self::Function { function_index, .. } => *function_index,
+        }
+    }
 }
 
 pub struct Assembler {
@@ -41,10 +60,14 @@ impl Assembler {
         self.labels[label_idx as usize].offset = location;
     }
 
-    pub fn assemble_program(&mut self, stmts: &[TStmt]) -> Vec<Opcode> {
+    pub fn assemble_program(&mut self, program_tree: TProgram) -> Vec<Opcode> {
         let mut program = Vec::new();
-        let offsets = OffsetTable::new_global(HashMap::new());
-        self.assemble_function(0, &mut program, offsets, stmts, 0);
+        let mut offsets = OffsetTable::new_global(HashMap::new());
+        for (idx, decl) in program_tree.declarations.iter().enumerate() {
+            program.push(Opcode::PushNone);
+            offsets.declare(decl.uid, idx as i32);
+        }
+        self.assemble_function(0, &mut program, offsets, program_tree.stmts, 0);
 
         let mut function_translations = HashMap::new();
         function_translations.insert(0, 0);
@@ -74,6 +97,16 @@ impl Assembler {
         return program;
     }
 
+    fn assemble_global(
+        &mut self,
+        current: &mut Vec<Opcode>,
+        offsets: OffsetTable,
+        stmts: &[TStmt],
+    ) {
+        let function_queue = self.assemble_block(AsmContext::Global, current, offsets, stmts);
+        current.push(Opcode::Return);
+    }
+
     fn assemble_function(
         &mut self,
         function_index: u32,
@@ -82,43 +115,30 @@ impl Assembler {
         stmts: &[TStmt],
         return_index: i32,
     ) {
-        let function_queue =
-            self.assemble_block(function_index, current, offsets, stmts, return_index);
+        self.assemble_block(
+            AsmContext::Function {
+                function_index,
+                return_index,
+            },
+            current,
+            offsets,
+            stmts,
+        );
         current.push(Opcode::Return);
-
-        for func_info in function_queue {
-            let mut current_function = Vec::new();
-            self.assemble_function(
-                func_info.uid,
-                &mut current_function,
-                OffsetTable::new(&func_info.offsets),
-                func_info.stmts,
-                func_info.return_index,
-            );
-            self.functions.insert(func_info.uid, current_function);
-        }
     }
 
     fn assemble_block<'a>(
         &mut self,
-        function_index: u32,
+        context: AsmContext,
         current: &mut Vec<Opcode>,
-        mut offsets: OffsetTable,
+        offsets: OffsetTable,
         stmts: &'a [TStmt<'a>],
-        return_index: i32,
-    ) -> Vec<FuncInfo<'a>> {
-        let mut function_queue = Vec::new();
-        let mut decl_index = 0;
+    ) {
         for stmt in stmts {
             match stmt {
                 TStmt::Expr(expr) => {
                     convert_expression_to_ops(current, &offsets, expr);
                     current.push(Opcode::Pop);
-                }
-                TStmt::Declare { decl_type, uid } => {
-                    current.push(Opcode::PushNone);
-                    offsets.declare(*uid, decl_index);
-                    decl_index += 1;
                 }
                 TStmt::Assign { uid, value } => {
                     convert_expression_to_ops(current, &offsets, value);
@@ -128,11 +148,18 @@ impl Assembler {
                 }
                 TStmt::Return { ret_val } => {
                     convert_expression_to_ops(current, &offsets, ret_val);
-                    current.push(Opcode::SetLocal {
-                        stack_offset: return_index,
-                    });
-
-                    current.push(Opcode::Return);
+                    if let AsmContext::Function {
+                        function_index,
+                        return_index,
+                    } = context
+                    {
+                        current.push(Opcode::SetLocal {
+                            stack_offset: return_index,
+                        });
+                        current.push(Opcode::Return);
+                    } else {
+                        panic!("shouldn't see return statement outside of function context");
+                    }
                 }
                 TStmt::If {
                     condition,
@@ -141,33 +168,20 @@ impl Assembler {
                 } => {
                     convert_expression_to_ops(current, &offsets, condition);
 
-                    let true_label = self.create_label(function_index);
-                    let end_label = self.create_label(function_index);
+                    let true_label = self.create_label(context.func_idx());
+                    let end_label = self.create_label(context.func_idx());
 
                     current.push(Opcode::JumpIf(true_label));
-                    self.assemble_block(
-                        function_index,
-                        current,
-                        OffsetTable::new(&offsets),
-                        if_false,
-                        return_index,
-                    );
+                    self.assemble_block(context, current, OffsetTable::new(&offsets), if_false);
                     current.push(Opcode::Jump(end_label));
                     self.attach_label(true_label, current.len() as u32);
-                    self.assemble_block(
-                        function_index,
-                        current,
-                        OffsetTable::new(&offsets),
-                        if_true,
-                        return_index,
-                    );
+                    self.assemble_block(context, current, OffsetTable::new(&offsets), if_true);
                     self.attach_label(end_label, current.len() as u32);
                 }
                 TStmt::Function {
                     uid,
-                    return_type,
                     argument_uids,
-                    argument_types,
+                    declarations,
                     stmts,
                 } => {
                     let mut offset = -1;
@@ -176,16 +190,29 @@ impl Assembler {
                         offsets.declare(*uid, offset);
                         offset -= 1;
                     }
-                    function_queue.push(FuncInfo {
-                        uid: *uid,
-                        stmts: *stmts,
+                    offset = 0;
+                    for decl in declarations.iter() {
+                        offsets.declare(decl.uid, offset);
+                        offset += 1;
+                    }
+
+                    let mut current_function = Vec::new();
+                    for _ in 0..declarations.len() {
+                        current_function.push(Opcode::PushNone);
+                    }
+
+                    self.assemble_function(
+                        *uid,
+                        &mut current_function,
                         offsets,
-                        return_index: -(argument_types.len() as i32) - 1,
-                    });
+                        stmts,
+                        -(argument_uids.len() as i32) - 1,
+                    );
+
+                    self.functions.insert(*uid, current_function);
                 }
             }
         }
-        return function_queue;
     }
 }
 

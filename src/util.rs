@@ -103,6 +103,7 @@ impl OffsetTable {
 
     pub fn declare(&mut self, symbol: u32, offset: i32) {
         if self.uids.contains_key(&symbol) {
+            println!("{}", symbol);
             panic!();
         }
         self.uids.insert(symbol, offset);

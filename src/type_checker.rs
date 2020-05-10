@@ -165,7 +165,7 @@ where
         return uid;
     }
 
-    pub fn check_program(&mut self, program: &[Stmt]) -> Result<&[TStmt<'b>], Error<'b>> {
+    pub fn check_program(&mut self, program: &[Stmt]) -> Result<TProgram<'b>, Error<'b>> {
         let type_table = builtin_types(self.buckets);
         let symbol_table = builtin_symbols(self.buckets);
         self.types = type_table;
@@ -175,18 +175,19 @@ where
 
         let (mut sym, mut tstmts) = self.check_stmts(program, sym, None)?;
 
-        let mut program = Vec::new();
-        for (symbol, info) in sym.symbols.drain() {
-            program.push(TStmt::Declare {
-                uid: info.uid(),
-                decl_type: info.get_type(),
-            });
-        }
+        let declarations = sym
+            .symbols
+            .drain()
+            .map(|info| Declaration { uid: info.1.uid() })
+            .collect();
+        let declarations = self.buckets.add_array(declarations);
 
-        program.append(&mut tstmts);
-        program.append(&mut builtin_definitions(self.buckets));
-
-        return Ok(self.buckets.add_array(program));
+        tstmts.append(&mut builtin_definitions(self.buckets));
+        let tstmts = self.buckets.add_array(tstmts);
+        return Ok(TProgram {
+            declarations,
+            stmts: tstmts,
+        });
     }
 
     fn add_function_symbols(
@@ -374,28 +375,24 @@ where
                         )?;
                     }
 
-                    let (mut fsym, mut fblock) =
-                        self.check_stmts(stmts, fsym, Some(*return_type))?;
-                    let mut fstmts = Vec::new();
+                    let (mut fsym, fblock) =
+                        self.check_stmts(stmts, SymbolTable::new(&fsym), Some(*return_type))?;
+                    let fdecls = fsym
+                        .symbols
+                        .drain()
+                        .map(|(_, info)| Declaration { uid: info.uid() })
+                        .collect();
 
-                    for (uid, info) in fsym.symbols.drain() {
-                        fstmts.push(TStmt::Declare {
-                            uid,
-                            decl_type: info.get_type(),
-                        });
-                    }
+                    let fdecls = self.buckets.add_array(fdecls);
 
-                    fstmts.append(&mut fblock);
-
-                    let fstmts = self.buckets.add_array(fstmts);
+                    let fblock = self.buckets.add_array(fblock);
                     let argument_uids = self.buckets.add_array(argument_uids);
 
                     tstmts.push(TStmt::Function {
                         uid,
-                        argument_types: arg_types,
                         argument_uids,
-                        return_type,
-                        stmts: fstmts,
+                        declarations: fdecls,
+                        stmts: fblock,
                     });
                 }
                 Stmt::If {

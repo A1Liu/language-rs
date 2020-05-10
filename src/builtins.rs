@@ -66,9 +66,8 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
 
     defns.push(TStmt::Function {
         uid: 1,
-        return_type: none_type,
-        argument_types: any_arg,
         argument_uids: uids,
+        declarations: buckets.add_array(vec![]),
         stmts,
     });
     return defns;
