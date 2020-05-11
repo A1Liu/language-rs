@@ -369,13 +369,14 @@ where
                         )?;
                     }
 
-                    let (mut fsym, fblock) =
+                    let (fsym, fblock) =
                         self.check_stmts(in_loop, stmts, symbols_(&fsym), Some(*return_type))?;
                     let fdecls = fsym
                         .symbols
-                        .drain()
+                        .iter()
                         .map(|(_, info)| Declaration { uid: info.uid() })
                         .collect();
+                    fsym.fold_into_parent()?;
 
                     let fdecls = self.buckets.add_array(fdecls);
 
