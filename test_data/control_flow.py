@@ -1,6 +1,12 @@
-while True:
+hello: int = 10
+blub: int = 0
+
+while hello:
     print(3)
-    break
-    print(4)
+
+    if blub:
+        break
+
+    hello = hello - 1
 else:
     print(5)

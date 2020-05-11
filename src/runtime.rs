@@ -25,6 +25,8 @@ pub enum Opcode {
     MakeBool(bool),
     AddFloat,
     AddInt,
+    SubFloat,
+    SubInt,
     PushNone,
     Pop,
     GetGlobal { stack_offset: u32 },
@@ -121,6 +123,22 @@ where
                 self.heap.push(BOOL_HEADER.to_bits());
                 let ret_val = self.heap.len();
                 self.heap.push(boolean as u64);
+                self.stack.push(ret_val);
+            }
+            SubFloat => {
+                let float2 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
+                let float1 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
+                self.heap.push(FLOAT_HEADER.to_bits());
+                let ret_val = self.heap.len();
+                self.heap.push((float1 - float2).to_bits());
+                self.stack.push(ret_val);
+            }
+            SubInt => {
+                let int2 = self.heap[self.stack.pop().unwrap()] as i64;
+                let int1 = self.heap[self.stack.pop().unwrap()] as i64;
+                self.heap.push(INT_HEADER.to_bits());
+                let ret_val = self.heap.len();
+                self.heap.push((int1 - int2) as u64);
                 self.stack.push(ret_val);
             }
             AddFloat => {

@@ -203,6 +203,9 @@ impl Assembler {
                     self.assemble_block(context, loop_label, current, offsets_(&offsets), if_false);
                     self.attach_label(end_label, current.len() as u32);
                 }
+                TStmt::Break => {
+                    current.push(Opcode::Jump(loop_label.unwrap()));
+                }
                 TStmt::While {
                     condition,
                     block,
@@ -254,6 +257,15 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, e
             ops.push(Opcode::GetLocal {
                 stack_offset: offsets.search(*uid).unwrap(),
             });
+        }
+        TExpr::Minus { left, right, type_ } => {
+            convert_expression_to_ops(ops, offsets, left);
+            convert_expression_to_ops(ops, offsets, right);
+            if *type_ == Type::Float {
+                ops.push(Opcode::SubFloat);
+            } else {
+                ops.push(Opcode::SubInt);
+            }
         }
         TExpr::Add { left, right, type_ } => {
             convert_expression_to_ops(ops, offsets, left);

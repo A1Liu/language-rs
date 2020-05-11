@@ -32,6 +32,11 @@ pub enum Expr<'a> {
         values: &'a mut [Expr<'a>],
         view: CRange,
     },
+    Minus {
+        left: &'a mut Expr<'a>,
+        right: &'a mut Expr<'a>,
+        view: CRange,
+    },
     Add {
         left: &'a mut Expr<'a>,
         right: &'a mut Expr<'a>,
@@ -61,6 +66,7 @@ impl<'a> Expr<'a> {
                 ..
             } => joinr(parent.view(), *member_view),
             Add { view, .. } => *view,
+            Minus { view, .. } => *view,
             Tup { view, .. } => *view,
         };
     }
@@ -155,6 +161,11 @@ pub enum TExpr<'a> {
     Int(i64),
     Float(f64),
     Bool(bool),
+    Minus {
+        left: &'a TExpr<'a>,
+        right: &'a TExpr<'a>,
+        type_: Type<'a>,
+    },
     Add {
         left: &'a TExpr<'a>,
         right: &'a TExpr<'a>,
@@ -179,6 +190,7 @@ impl<'a> TExpr<'a> {
             Float(_) => Type::Float,
             Bool(_) => Type::Bool,
             None => Type::None,
+            Minus { type_, .. } => *type_,
             Add { type_, .. } => *type_,
             Call { type_, .. } => *type_,
             ECall { .. } => Type::None,
@@ -214,6 +226,7 @@ pub enum TStmt<'a> {
         block: &'a [TStmt<'a>],
         else_block: &'a [TStmt<'a>],
     },
+    Break,
     Return {
         ret_val: &'a TExpr<'a>,
     },

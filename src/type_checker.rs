@@ -51,6 +51,13 @@ impl<'a> SymbolInfo<'a> {
     }
 }
 
+pub fn symbols_<'a>(parent: &SymbolTable<'a>) -> SymbolTable<'a> {
+    return SymbolTable {
+        symbols: HashMap::new(),
+        parent: Some(NonNull::from(parent)),
+    };
+}
+
 pub struct SymbolTable<'a> {
     pub symbols: HashMap<u32, SymbolInfo<'a>>,
     parent: Option<NonNull<SymbolTable<'a>>>,
@@ -61,16 +68,6 @@ impl<'a> SymbolTable<'a> {
         return Self {
             symbols,
             parent: None,
-        };
-    }
-
-    pub fn new<'b>(parent: &SymbolTable<'b>) -> Self
-    where
-        'b: 'a,
-    {
-        return Self {
-            symbols: HashMap::new(),
-            parent: Some(NonNull::from(parent)),
         };
     }
 
@@ -90,7 +87,7 @@ impl<'a> SymbolTable<'a> {
         mut right: SymbolTable<'b>,
     ) -> Result<SymbolTable<'b>, Error<'static>> {
         assert!(left.parent == right.parent && left.parent != None);
-        let mut result = SymbolTable::new(unsafe { left.parent.unwrap().as_mut() });
+        let mut result = symbols_(unsafe { left.parent.unwrap().as_mut() });
         for (id, info) in left.symbols.drain() {
             if let Some(rinfo) = right.symbols.remove(&id) {
                 if info != rinfo {
@@ -173,7 +170,7 @@ where
 
         let sym = SymbolTable::new_global(symbol_table);
 
-        let (mut sym, mut tstmts) = self.check_stmts(program, sym, None)?;
+        let (mut sym, mut tstmts) = self.check_stmts(false, program, sym, None)?;
 
         let declarations = sym
             .symbols
@@ -248,6 +245,7 @@ where
 
     fn check_stmts(
         &mut self,
+        in_loop: bool,
         stmts: &[Stmt],
         mut sym: SymbolTable<'b>,
         return_type: Option<Type<'b>>,
@@ -358,7 +356,7 @@ where
                         panic!();
                     }
 
-                    let mut fsym = SymbolTable::new(&sym);
+                    let mut fsym = symbols_(&sym);
                     let mut argument_uids = Vec::new();
 
                     for (arg, arg_type) in arguments.iter().zip(arg_types) {
@@ -376,7 +374,7 @@ where
                     }
 
                     let (mut fsym, fblock) =
-                        self.check_stmts(stmts, SymbolTable::new(&fsym), Some(*return_type))?;
+                        self.check_stmts(in_loop, stmts, symbols_(&fsym), Some(*return_type))?;
                     let fdecls = fsym
                         .symbols
                         .drain()
@@ -402,10 +400,10 @@ where
                 } => {
                     let condition = self.check_expr(&mut sym, condition)?;
                     let (while_sym, block) =
-                        self.check_stmts(block, SymbolTable::new(&sym), return_type)?;
+                        self.check_stmts(true, block, symbols_(&sym), return_type)?;
                     while_sym.fold_into_parent()?;
                     let (else_sym, else_block) =
-                        self.check_stmts(else_branch, SymbolTable::new(&sym), return_type)?;
+                        self.check_stmts(in_loop, else_branch, symbols_(&sym), return_type)?;
                     else_sym.fold_into_parent()?;
 
                     let condition = self.buckets.add(condition);
@@ -418,6 +416,9 @@ where
                         else_block,
                     });
                 }
+                Stmt::Break => {
+                    tstmts.push(TStmt::Break);
+                }
                 Stmt::If {
                     conditioned_blocks,
                     else_branch,
@@ -426,18 +427,16 @@ where
                     let mut ifstmts = Vec::new();
                     for conditioned_block in conditioned_blocks.iter() {
                         let condition = self.check_expr(&mut sym, &conditioned_block.condition)?;
+                        let block = &conditioned_block.block;
 
-                        let (ifsym, tblock) = self.check_stmts(
-                            conditioned_block.block,
-                            SymbolTable::new(&sym),
-                            return_type,
-                        )?;
+                        let (ifsym, tblock) =
+                            self.check_stmts(in_loop, block, symbols_(&sym), return_type)?;
                         sym_tables.push(ifsym);
                         ifstmts.push((condition, tblock));
                     }
 
                     let (else_sym, else_block) =
-                        self.check_stmts(else_branch, SymbolTable::new(&sym), return_type)?;
+                        self.check_stmts(in_loop, else_branch, symbols_(&sym), return_type)?;
 
                     sym_tables.push(else_sym);
 
@@ -500,6 +499,22 @@ where
 
                 return Ok(TExpr::Ident { uid, type_ });
             }
+            Expr::Minus { left, right, view } => {
+                let left = self.check_expr(sym, left)?;
+                let right = self.check_expr(sym, right)?;
+                let left = self.buckets.add(left);
+                let right = self.buckets.add(right);
+
+                if left.type_() == right.type_() {
+                    return Ok(TExpr::Minus {
+                        left,
+                        right,
+                        type_: left.type_(),
+                    });
+                } else {
+                    return err(*view, "incompatible types for addition");
+                }
+            }
             Expr::Add { left, right, view } => {
                 let left = self.check_expr(sym, left)?;
                 let right = self.check_expr(sym, right)?;
@@ -510,7 +525,7 @@ where
                     return Ok(TExpr::Add {
                         left,
                         right,
-                        type_: Type::Float,
+                        type_: left.type_(),
                     });
                 } else {
                     return err(*view, "incompatible types for addition");

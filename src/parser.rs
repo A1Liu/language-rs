@@ -394,6 +394,14 @@ where
         let mut expr = self.try_parse_unary_postfix()?;
         loop {
             match self.peek() {
+                Dash(loc) => {
+                    self.pop();
+                    let left = self.buckets.add(expr);
+                    let right = self.try_parse_unary_postfix()?;
+                    let right = self.buckets.add(right);
+                    let view = joinr(left.view(), right.view());
+                    expr = Expr::Minus { left, right, view };
+                }
                 Plus(loc) => {
                     self.pop();
                     let left = self.buckets.add(expr);
