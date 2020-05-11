@@ -256,12 +256,14 @@ where
 
                     let ret_val_view = ret_val.view();
                     let ret_val = self.check_expr(&mut sym, ret_val)?;
-
-                    if !Self::is_assignment_compatible(return_type, ret_val.type_()) {
-                        return err(ret_val_view, "returning the wrong type");
-                    }
-
+                    let ret_val = self.cast_err(
+                        return_type,
+                        ret_val,
+                        ret_val_view,
+                        "return value is wrong type",
+                    )?;
                     let ret_val = self.buckets.add(ret_val);
+
                     tstmts.push(TStmt::Return { ret_val });
                 }
                 Stmt::Declare {
@@ -283,11 +285,8 @@ where
                     )?;
 
                     let expr = self.check_expr(&mut sym, value)?;
-                    println!("{:?}", decl_type);
-                    if !Self::is_assignment_compatible(*decl_type, expr.type_()) {
-                        return err(value.view(), "value type doesn't match variable type");
-                    }
-
+                    let expr =
+                        self.cast_err(*decl_type, expr, value.view(), "value is wrong type")?;
                     let value = self.buckets.add(expr);
 
                     tstmts.push(TStmt::Assign { to: *name, value });
@@ -303,10 +302,8 @@ where
                     }
 
                     let expr = self.check_expr(&mut sym, value)?;
-                    if !Self::is_assignment_compatible(*to_type, expr.type_()) {
-                        return err(value.view(), "value type doesn't match variable type");
-                    }
-
+                    let expr =
+                        self.cast_err(*to_type, expr, value.view(), "value is wrong type")?;
                     let value = self.buckets.add(expr);
 
                     tstmts.push(TStmt::Assign { to: *to, value });
@@ -536,9 +533,7 @@ where
                     for (formal, arg) in args_formal.iter().zip(arguments.iter()) {
                         let view = arg.view();
                         let arg = self.check_expr(sym, arg)?;
-                        if !Self::is_assignment_compatible(*formal, arg.type_()) {
-                            return err(view, "argument is wrong type");
-                        }
+                        let arg = self.cast_err(*formal, arg, view, "argument is wrong type")?;
                         args.push(arg);
                     }
 
@@ -557,16 +552,32 @@ where
         }
     }
 
-    fn is_assignment_compatible(to: Type<'b>, value: Type<'b>) -> bool {
-        match value {
-            Type::None => return true,
+    fn cast_err(
+        &mut self,
+        to: Type<'b>,
+        value: TExpr<'b>,
+        view: CRange,
+        err_msg: &'b str,
+    ) -> Result<TExpr<'b>, Error<'b>> {
+        // let error_message = "value type doesn't match variable type";
+
+        match value.type_() {
+            Type::None => return Ok(value),
             _ => {}
         }
 
         return match to {
-            Type::Any => true,
-            Type::None => false,
-            x => x == value,
+            Type::Any => Ok(value),
+            Type::None => err(view, err_msg),
+            Type::Float => {
+                if value.type_() == Type::Int {
+                    err(view, err_msg) // TODO implement casting
+                } else {
+                    err(view, err_msg)
+                }
+            }
+            x if x == value.type_() => Ok(value),
+            x => err(view, err_msg),
         };
     }
 }
