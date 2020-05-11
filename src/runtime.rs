@@ -107,18 +107,8 @@ where
             BeginStringData(_) | StringData(_) => {
                 panic!("StringDdata not supported in text section");
             }
-            MakeInt(int) => {
-                self.heap.push(INT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push(int as u64);
-                self.stack.push(ret_val);
-            }
-            MakeFloat(float) => {
-                self.heap.push(FLOAT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push(float.to_bits());
-                self.stack.push(ret_val);
-            }
+            MakeInt(int) => self.make_int(int),
+            MakeFloat(float) => self.make_float(float),
             MakeBool(boolean) => {
                 self.heap.push(BOOL_HEADER.to_bits());
                 let ret_val = self.heap.len();
@@ -128,34 +118,22 @@ where
             SubFloat => {
                 let float2 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
                 let float1 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
-                self.heap.push(FLOAT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push((float1 - float2).to_bits());
-                self.stack.push(ret_val);
+                self.make_float(float1 - float2);
             }
             SubInt => {
                 let int2 = self.heap[self.stack.pop().unwrap()] as i64;
                 let int1 = self.heap[self.stack.pop().unwrap()] as i64;
-                self.heap.push(INT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push((int1 - int2) as u64);
-                self.stack.push(ret_val);
+                self.make_int(int1 - int2);
             }
             AddFloat => {
                 let float2 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
                 let float1 = f64::from_bits(self.heap[self.stack.pop().unwrap()]);
-                self.heap.push(FLOAT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push((float1 + float2).to_bits());
-                self.stack.push(ret_val);
+                self.make_float(float1 + float2);
             }
             AddInt => {
                 let int2 = self.heap[self.stack.pop().unwrap()] as i64;
                 let int1 = self.heap[self.stack.pop().unwrap()] as i64;
-                self.heap.push(INT_HEADER.to_bits());
-                let ret_val = self.heap.len();
-                self.heap.push((int1 + int2) as u64);
-                self.stack.push(ret_val);
+                self.make_int(int1 + int2);
             }
             Pop => {
                 self.stack.pop();
@@ -274,6 +252,20 @@ where
             },
         }
         self.pc += 1;
+    }
+
+    fn make_int(&mut self, value: i64) {
+        self.heap.push(INT_HEADER.to_bits());
+        let ret_val = self.heap.len();
+        self.heap.push(value as u64);
+        self.stack.push(ret_val);
+    }
+
+    fn make_float(&mut self, value: f64) {
+        self.heap.push(FLOAT_HEADER.to_bits());
+        let ret_val = self.heap.len();
+        self.heap.push(value.to_bits());
+        self.stack.push(ret_val);
     }
 
     fn eval_bool(&self, value: usize) -> bool {
