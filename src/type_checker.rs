@@ -14,7 +14,6 @@ pub enum SymbolInfo<'a> {
         view: CRange,
     },
     Variable {
-        uid: u32,
         type_: &'a Type<'a>,
         view: CRange,
     },
@@ -31,7 +30,7 @@ impl<'a> SymbolInfo<'a> {
                 return_type,
                 arguments,
             },
-            SymbolInfo::Variable { type_, .. } => **type_,
+            &SymbolInfo::Variable { type_, .. } => *type_,
         };
     }
 
@@ -40,13 +39,6 @@ impl<'a> SymbolInfo<'a> {
         return match self {
             Function { view, .. } => *view,
             Variable { view, .. } => *view,
-        };
-    }
-
-    pub fn uid(&self) -> u32 {
-        return match self {
-            SymbolInfo::Function { uid, .. } => *uid,
-            SymbolInfo::Variable { uid, .. } => *uid,
         };
     }
 }
@@ -145,33 +137,32 @@ where
 {
     pub fn new(buckets: &'a mut Buckets<'b>) -> Self {
         return Self {
-            next_uid_: 0,
+            next_uid_: FUNC_UID_BEGIN,
             buckets,
             types: HashMap::new(),
             warnings: Vec::new(),
         };
     }
 
-    pub fn next_uid(&mut self) -> u32 {
-        let uid = self.next_uid_;
+    fn next_uid(&mut self) -> u32 {
+        let ret_val = self.next_uid_;
         self.next_uid_ += 1;
-        return uid;
+        return ret_val;
     }
 
     pub fn check_program(&mut self, program: &[Stmt]) -> Result<TProgram<'b>, Error<'b>> {
         let type_table = builtin_types(self.buckets);
         let symbol_table = builtin_symbols(self.buckets);
         self.types = type_table;
-        self.next_uid_ = UID_BEGIN;
 
         let sym = SymbolTable::new_global(symbol_table);
 
-        let (mut sym, mut tstmts) = self.check_stmts(false, program, sym, None)?;
+        let (sym, mut tstmts) = self.check_stmts(false, program, sym, None)?;
 
         let declarations = sym
             .symbols
-            .drain()
-            .map(|info| Declaration { uid: info.1.uid() })
+            .keys()
+            .map(|&name| Declaration { name })
             .collect();
         let declarations = self.buckets.add_array(declarations);
 
@@ -283,49 +274,42 @@ where
                     let decl_type =
                         *unwrap_err(self.types.get(type_name), *type_view, "type doesn't exist")?;
 
-                    let uid = self.next_uid();
-
                     sym.declare(
                         *name,
                         SymbolInfo::Variable {
                             type_: decl_type,
                             view: *name_view,
-                            uid,
                         },
                     )?;
 
                     let expr = self.check_expr(&mut sym, value)?;
+                    println!("{:?}", decl_type);
                     if !Self::is_assignment_compatible(*decl_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
 
-                    let expr = self.buckets.add(expr);
+                    let value = self.buckets.add(expr);
 
-                    tstmts.push(TStmt::Assign { uid, value: expr });
+                    tstmts.push(TStmt::Assign { to: *name, value });
                 }
                 Stmt::Assign { to, to_view, value } => {
                     let var_info = unwrap_err(sym.search(*to), *to_view, "name doesn't exist")?;
 
                     let to_type;
-                    let to_uid;
-                    if let SymbolInfo::Variable { uid, type_, .. } = var_info {
-                        to_type = *type_;
-                        to_uid = uid;
+                    if let SymbolInfo::Variable { type_, .. } = var_info {
+                        to_type = type_;
                     } else {
                         return err(*to_view, "name being assigned to is a function");
                     }
 
                     let expr = self.check_expr(&mut sym, value)?;
-                    if !Self::is_assignment_compatible(to_type, expr.type_()) {
+                    if !Self::is_assignment_compatible(*to_type, expr.type_()) {
                         return err(value.view(), "value type doesn't match variable type");
                     }
 
-                    let expr = self.buckets.add(expr);
+                    let value = self.buckets.add(expr);
 
-                    tstmts.push(TStmt::Assign {
-                        uid: to_uid,
-                        value: expr,
-                    });
+                    tstmts.push(TStmt::Assign { to: *to, value });
                 }
                 Stmt::Function {
                     name,
@@ -342,7 +326,7 @@ where
                         uid: id,
                         return_type: rtype,
                         arguments,
-                        view,
+                        ..
                     } = sym.search(*name).unwrap()
                     {
                         uid = id;
@@ -353,17 +337,14 @@ where
                     }
 
                     let mut fsym = symbols_(&sym);
-                    let mut argument_uids = Vec::new();
+                    let mut argument_names = Vec::new();
 
                     for (arg, arg_type) in arguments.iter().zip(arg_types) {
-                        let uid = self.next_uid();
-
-                        argument_uids.push(uid);
+                        argument_names.push(arg.name);
                         fsym.declare(
                             arg.name,
                             SymbolInfo::Variable {
                                 type_: arg_type,
-                                uid,
                                 view: arg.view,
                             },
                         )?;
@@ -373,19 +354,19 @@ where
                         self.check_stmts(in_loop, stmts, symbols_(&fsym), Some(*return_type))?;
                     let fdecls = fsym
                         .symbols
-                        .iter()
-                        .map(|(_, info)| Declaration { uid: info.uid() })
+                        .keys()
+                        .map(|&name| Declaration { name })
                         .collect();
                     fsym.fold_into_parent()?;
 
                     let fdecls = self.buckets.add_array(fdecls);
 
                     let fblock = self.buckets.add_array(fblock);
-                    let argument_uids = self.buckets.add_array(argument_uids);
+                    let argument_names = self.buckets.add_array(argument_names);
 
                     tstmts.push(TStmt::Function {
                         uid,
-                        argument_uids,
+                        argument_names,
                         declarations: fdecls,
                         stmts: fblock,
                     });
@@ -489,12 +470,12 @@ where
             Expr::Ident { id, view } => {
                 let var_info = unwrap_err(sym.search(*id), *view, "referenced name doesn't exist")?;
 
-                let (uid, type_) = match var_info {
-                    SymbolInfo::Variable { uid, type_, .. } => (uid, *type_),
+                let type_ = match var_info {
+                    SymbolInfo::Variable { type_, .. } => *type_,
                     SymbolInfo::Function { .. } => panic!("we don't have function objects yet"),
                 };
 
-                return Ok(TExpr::Ident { uid, type_ });
+                return Ok(TExpr::Ident { id: *id, type_ });
             }
             Expr::Minus { left, right, view } => {
                 let left = self.check_expr(sym, left)?;

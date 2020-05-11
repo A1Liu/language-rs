@@ -4,15 +4,15 @@ use crate::type_checker::*;
 use crate::util::*;
 use std::collections::HashMap;
 
-pub const PRINT_IDX: u32 = 0;
-pub const FLOAT_IDX: u32 = 1;
-pub const INT_IDX: u32 = 2;
-pub const BOOL_IDX: u32 = 3;
-pub const STR_IDX: u32 = 4;
-pub const UID_BEGIN: u32 = 10;
+pub const PRINT_IDX: u32 = 1;
+pub const FLOAT_IDX: u32 = 2;
+pub const INT_IDX: u32 = 3;
+pub const BOOL_IDX: u32 = 4;
+pub const STR_IDX: u32 = 5;
+pub const FUNC_UID_BEGIN: u32 = 10;
 
 pub fn builtin_names<'a>() -> (Vec<&'a str>, HashMap<&'a str, u32>) {
-    let names = vec!["print", "float", "int", "bool", "str"];
+    let names = vec!["", "print", "float", "int", "bool", "str"];
     let mut names_map = HashMap::new();
     for (idx, name) in names.iter().enumerate() {
         names_map.insert(*name, idx as u32);
@@ -51,7 +51,7 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
     let ecall_args = buckets.add_array(vec![
         TExpr::Int(PRINT_PRIMITIVE as i64),
         TExpr::Ident {
-            uid: 2,
+            id: 1,
             type_: Type::Any,
         },
     ]);
@@ -60,13 +60,13 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
         arguments: ecall_args,
     });
 
-    let uids = buckets.add_array(vec![2]);
+    let uids = buckets.add_array(vec![1]);
 
     let stmts = buckets.add_array(vec![TStmt::Expr(ecall_expr)]);
 
     defns.push(TStmt::Function {
         uid: 1,
-        argument_uids: uids,
+        argument_names: uids,
         declarations: buckets.add_array(vec![]),
         stmts,
     });

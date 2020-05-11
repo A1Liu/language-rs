@@ -154,7 +154,7 @@ impl<'a> Type<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum TExpr<'a> {
     Ident {
-        uid: u32,
+        id: u32,
         type_: Type<'a>,
     },
     None,
@@ -200,19 +200,19 @@ impl<'a> TExpr<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Declaration {
-    pub uid: u32,
+    pub name: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum TStmt<'a> {
     Expr(&'a TExpr<'a>),
     Assign {
-        uid: u32,
+        to: u32,
         value: &'a TExpr<'a>,
     },
     Function {
         uid: u32,
-        argument_uids: &'a [u32],
+        argument_names: &'a [u32],
         declarations: &'a [Declaration],
         stmts: &'a [TStmt<'a>],
     },

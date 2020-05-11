@@ -66,7 +66,7 @@ impl Assembler {
         let mut program = Vec::new();
         let mut offsets = OffsetTable::new_global(HashMap::new());
         for (idx, decl) in program_tree.declarations.iter().enumerate() {
-            offsets.declare(decl.uid, idx as i32);
+            offsets.declare(decl.name, idx as i32);
             program.push(Opcode::PushNone);
         }
 
@@ -128,7 +128,7 @@ impl Assembler {
         }
         offset = 0;
         for decl in declarations.iter() {
-            offsets.declare(decl.uid, offset);
+            offsets.declare(decl.name, offset);
             offset += 1;
         }
 
@@ -165,10 +165,10 @@ impl Assembler {
                     convert_expression_to_ops(current, &offsets, expr);
                     current.push(Opcode::Pop);
                 }
-                TStmt::Assign { uid, value } => {
+                TStmt::Assign { to, value } => {
                     convert_expression_to_ops(current, &offsets, value);
                     current.push(Opcode::SetLocal {
-                        stack_offset: offsets.search(*uid).unwrap(),
+                        stack_offset: offsets.search(*to).unwrap(),
                     });
                 }
                 TStmt::Return { ret_val } => {
@@ -226,12 +226,12 @@ impl Assembler {
                 }
                 TStmt::Function {
                     uid,
-                    argument_uids,
+                    argument_names,
                     declarations,
                     stmts,
                 } => {
                     let func_body =
-                        self.assemble_function(*uid, argument_uids, declarations, stmts, &offsets);
+                        self.assemble_function(*uid, argument_names, declarations, stmts, &offsets);
                     self.functions.insert(*uid, func_body);
                 }
             }
@@ -253,9 +253,9 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, e
         TExpr::Float(value) => {
             ops.push(Opcode::MakeFloat(*value));
         }
-        TExpr::Ident { uid, .. } => {
+        TExpr::Ident { id, .. } => {
             ops.push(Opcode::GetLocal {
-                stack_offset: offsets.search(*uid).unwrap(),
+                stack_offset: offsets.search(*id).unwrap(),
             });
         }
         TExpr::Minus { left, right, type_ } => {
