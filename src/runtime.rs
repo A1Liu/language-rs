@@ -2,7 +2,7 @@ use std::io::Write;
 use std::slice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ObjectHeader {
+pub struct ObjectHeader {
     type_index: u32,
     object_size: u32,
 }
@@ -33,7 +33,9 @@ pub enum Opcode {
     SetGlobal { stack_offset: u32 },
     GetLocal { stack_offset: i32 },
     SetLocal { stack_offset: i32 },
-    Deref { offset: u32 },
+    HeapRead { offset: u32 },
+    HeapWrite { offset: u32 },
+    HeapAlloc { header: ObjectHeader },
     Return,
     Call(u32),      // absolute address
     JumpIf(u32),    // absolute address
@@ -69,6 +71,7 @@ const BOOL_HEADER: ObjectHeader = ObjectHeader {
     object_size: 1,
 };
 const STRING_TYPE_INDEX: u32 = 3;
+pub const STACK_FRAME_TYPE_INDEX: u32 = 4;
 
 pub const PRINT_PRIMITIVE: u64 = 0;
 pub const FLOAT_CAST: u64 = 1;
@@ -152,9 +155,22 @@ where
             SetLocal { stack_offset } => {
                 self.stack[self.fp.wrapping_add(stack_offset as usize)] = self.stack.pop().unwrap();
             }
-            Deref { offset } => {
+            HeapRead { offset } => {
                 let ptr = self.stack.pop().unwrap();
                 self.stack.push(self.heap[ptr + offset as usize] as usize);
+            }
+            HeapWrite { offset } => {
+                let ptr = self.stack.pop().unwrap();
+                let value = self.stack.pop().unwrap();
+                self.heap[ptr + offset as usize] = value as u64;
+            }
+            HeapAlloc { header } => {
+                self.heap.push(header.to_bits());
+                let ret_val = self.heap.len();
+                for _ in 0..header.object_size {
+                    self.heap.push(NONE_VALUE as u64);
+                }
+                self.stack.push(ret_val);
             }
             PushNone => {
                 self.stack.push(NONE_VALUE);
