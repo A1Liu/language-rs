@@ -1,5 +1,5 @@
 asdf: float = 12.0
-hello: float = 12.0
+hello: float = 12.12
 meep: float = asdf + hello
 
 

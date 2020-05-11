@@ -208,8 +208,14 @@ where
                                 .expect("should not have failed");
                         }
                         FLOAT_HEADER => {
-                            write!(self.stdout, "{}\n", f64::from_bits(arg_value))
-                                .expect("should not have failed");
+                            let float_value = f64::from_bits(arg_value);
+                            if float_value as i64 as f64 == float_value {
+                                write!(self.stdout, "{:.p$}\n", f64::from_bits(arg_value), p = 1)
+                                    .expect("should not have failed");
+                            } else {
+                                write!(self.stdout, "{}\n", f64::from_bits(arg_value))
+                                    .expect("should not have failed");
+                            }
                         }
                         BOOL_HEADER => {
                             let value = if arg_value != 0 { "True" } else { "False" };

@@ -79,7 +79,8 @@ impl<'a> SymbolTable<'a> {
         for (id, info) in left.symbols.drain() {
             if let Some(rinfo) = right.symbols.remove(&id) {
                 if info.get_type() != rinfo.get_type() {
-                    return err(info.view(), "variable type differs from other variable type in parallel scope with same name");
+                    return err(info.view(),
+                        "variable type differs from other variable type in parallel scope with same name");
                 }
             }
             result.declare(id, info)?;
@@ -294,12 +295,11 @@ where
                 Stmt::Assign { to, to_view, value } => {
                     let var_info = unwrap_err(sym.search(*to), *to_view, "name doesn't exist")?;
 
-                    let to_type;
-                    if let SymbolInfo::Variable { type_, .. } = var_info {
-                        to_type = type_;
+                    let to_type = if let SymbolInfo::Variable { type_, .. } = var_info {
+                        type_
                     } else {
                         return err(*to_view, "name being assigned to is a function");
-                    }
+                    };
 
                     let expr = self.check_expr(&mut sym, value)?;
                     let expr =
@@ -316,22 +316,17 @@ where
                     return_type,
                     stmts,
                 } => {
-                    let uid;
-                    let return_type;
-                    let arg_types;
-                    if let SymbolInfo::Function {
-                        uid: id,
-                        return_type: rtype,
+                    let (uid, return_type, arg_types) = if let SymbolInfo::Function {
+                        uid,
+                        return_type,
                         arguments,
                         ..
                     } = sym.search(*name).unwrap()
                     {
-                        uid = id;
-                        return_type = rtype;
-                        arg_types = arguments;
+                        (uid, return_type, arguments)
                     } else {
-                        panic!();
-                    }
+                        panic!()
+                    };
 
                     let mut fsym = symbols_(&sym);
                     let mut argument_names = Vec::new();
@@ -559,8 +554,6 @@ where
         view: CRange,
         err_msg: &'b str,
     ) -> Result<TExpr<'b>, Error<'b>> {
-        // let error_message = "value type doesn't match variable type";
-
         match value.type_() {
             Type::None => return Ok(value),
             _ => {}
@@ -570,7 +563,9 @@ where
             Type::Any => Ok(value),
             Type::None => err(view, err_msg),
             Type::Float => {
-                if value.type_() == Type::Int {
+                if value.type_() == Type::Float {
+                    Ok(value)
+                } else if value.type_() == Type::Int {
                     err(view, err_msg) // TODO implement casting
                 } else {
                     err(view, err_msg)
