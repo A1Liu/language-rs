@@ -71,10 +71,6 @@ impl<'a> SymbolTable<'a> {
         };
     }
 
-    pub fn search_current(&self, symbol: u32) -> Option<SymbolInfo<'a>> {
-        return self.symbols.get(&symbol).map(|r| *r);
-    }
-
     pub fn fold_into_parent(mut self) -> Result<(), Error<'static>> {
         for (symbol, info) in self.symbols.drain() {
             unsafe { self.parent.unwrap().as_mut() }.declare(symbol, info)?;
@@ -90,8 +86,8 @@ impl<'a> SymbolTable<'a> {
         let mut result = symbols_(unsafe { left.parent.unwrap().as_mut() });
         for (id, info) in left.symbols.drain() {
             if let Some(rinfo) = right.symbols.remove(&id) {
-                if info != rinfo {
-                    return err(info.view(), "");
+                if info.get_type() != rinfo.get_type() {
+                    return err(info.view(), "variable type differs from other variable type in parallel scope with same name");
                 }
             }
             result.declare(id, info)?;

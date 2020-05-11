@@ -33,6 +33,7 @@ pub enum Opcode {
     SetGlobal { stack_offset: u32 },
     GetLocal { stack_offset: i32 },
     SetLocal { stack_offset: i32 },
+    Deref { offset: u32 },
     Return,
     Call(u32),      // absolute address
     JumpIf(u32),    // absolute address
@@ -150,6 +151,10 @@ where
             }
             SetLocal { stack_offset } => {
                 self.stack[self.fp.wrapping_add(stack_offset as usize)] = self.stack.pop().unwrap();
+            }
+            Deref { offset } => {
+                let ptr = self.stack.pop().unwrap();
+                self.stack.push(self.heap[ptr + offset as usize] as usize);
             }
             PushNone => {
                 self.stack.push(NONE_VALUE);
