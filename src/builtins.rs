@@ -66,6 +66,7 @@ pub fn builtin_definitions<'a, 'b>(buckets: &'b mut Buckets<'a>) -> Vec<TStmt<'a
 
     defns.push(TStmt::Function {
         uid: 1,
+        name: PRINT_IDX,
         argument_names: uids,
         declarations: buckets.add_array(vec![]),
         stmts,

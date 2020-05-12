@@ -229,6 +229,7 @@ impl Assembler {
                     argument_names,
                     declarations,
                     stmts,
+                    ..
                 } => {
                     let func_body =
                         self.assemble_function(*uid, argument_names, declarations, stmts, &offsets);

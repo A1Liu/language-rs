@@ -358,6 +358,7 @@ where
 
                     tstmts.push(TStmt::Function {
                         uid,
+                        name: *name,
                         argument_names,
                         declarations: fdecls,
                         stmts: fblock,

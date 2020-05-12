@@ -212,6 +212,7 @@ pub enum TStmt<'a> {
     },
     Function {
         uid: u32,
+        name: u32,
         argument_names: &'a [u32],
         declarations: &'a [Declaration],
         stmts: &'a [TStmt<'a>],
