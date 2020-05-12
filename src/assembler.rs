@@ -16,8 +16,11 @@ pub fn offsets_(parent: &OffsetTable) -> OffsetTable {
 }
 
 impl OffsetTable {
-    pub fn new_global(uids: HashMap<u32, i32>) -> Self {
-        return Self { uids, parent: None };
+    pub fn new_global() -> Self {
+        return Self {
+            uids: HashMap::new(),
+            parent: None,
+        };
     }
 
     pub fn declare(&mut self, symbol: u32, offset: i32) {
@@ -110,7 +113,7 @@ impl Assembler {
 
     pub fn assemble_program(&mut self, program_tree: TProgram) -> Vec<Opcode> {
         let mut program = Vec::new();
-        let mut offsets = OffsetTable::new_global(HashMap::new());
+        let mut offsets = OffsetTable::new_global();
         for (idx, decl) in program_tree.declarations.iter().enumerate() {
             offsets.declare(decl.name, idx as i32);
             program.push(Opcode::PushNone);
