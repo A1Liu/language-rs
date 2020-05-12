@@ -5,8 +5,8 @@ const DEBUG: bool = false;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectHeader {
-    type_index: u32,
-    object_size: u32,
+    pub type_index: u32,
+    pub object_size: u32,
 }
 
 impl ObjectHeader {

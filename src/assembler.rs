@@ -1,7 +1,53 @@
 use crate::runtime::*;
 use crate::syntax_tree::*;
-use crate::util::*;
 use std::collections::HashMap;
+use std::ptr::NonNull;
+
+pub struct OffsetTable {
+    pub uids: HashMap<u32, i32>,
+    parent: Option<NonNull<OffsetTable>>,
+}
+
+pub fn offsets_(parent: &OffsetTable) -> OffsetTable {
+    return OffsetTable {
+        uids: HashMap::new(),
+        parent: Some(NonNull::from(parent)),
+    };
+}
+
+impl OffsetTable {
+    pub fn new_global(uids: HashMap<u32, i32>) -> Self {
+        return Self { uids, parent: None };
+    }
+
+    pub fn declare(&mut self, symbol: u32, offset: i32) {
+        if self.uids.contains_key(&symbol) {
+            println!("{}", symbol);
+            panic!();
+        }
+        self.uids.insert(symbol, offset);
+    }
+
+    pub fn search(&self, symbol: u32) -> Option<i32> {
+        return unsafe { self.search_unsafe(symbol) };
+    }
+
+    unsafe fn search_unsafe(&self, symbol: u32) -> Option<i32> {
+        let mut current = NonNull::from(self);
+        let mut uids = NonNull::from(&current.as_ref().uids);
+
+        loop {
+            if let Some(info) = uids.as_ref().get(&symbol) {
+                return Some(*info);
+            } else if let Some(parent) = current.as_ref().parent {
+                current = parent;
+                uids = NonNull::from(&current.as_ref().uids);
+            } else {
+                return None;
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct OpLoc {
