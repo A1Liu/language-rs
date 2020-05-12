@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::slice;
 
+const DEBUG: bool = false;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectHeader {
     type_index: u32,
@@ -106,6 +108,10 @@ where
     }
 
     fn run_op(&mut self, op: Opcode) {
+        if DEBUG {
+            println!("DEBUG: {:?}", op);
+        }
+
         use Opcode::*;
         match op {
             BeginStringData(_) | StringData(_) => {
