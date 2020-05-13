@@ -207,6 +207,10 @@ impl Assembler {
         });
         current.push(Opcode::GetLocal { stack_offset: 0 });
         current.push(Opcode::HeapWrite { offset: 0 });
+        current.push(Opcode::PushNone);
+        current.push(Opcode::SetLocal {
+            stack_offset: return_index,
+        });
 
         let mut offsets = offsets_(parent);
         let mut arg_offset = -1;

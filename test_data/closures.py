@@ -9,7 +9,7 @@ def hi(i: int):
     def blah():
         print(hi)
 
-    blah()
+    return blah()
 
 
 hi(12)
