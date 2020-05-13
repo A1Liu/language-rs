@@ -3,12 +3,17 @@ use crate::syntax_tree::*;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 
-pub struct OffsetTable {
+struct OffsetInfo {
+    scope_offset: u32,
+    var_offset: u32,
+}
+
+struct OffsetTable {
     pub uids: HashMap<u32, u32>,
     parent: Option<NonNull<OffsetTable>>,
 }
 
-pub fn offsets_(parent: &OffsetTable) -> OffsetTable {
+fn offsets_(parent: &OffsetTable) -> OffsetTable {
     return OffsetTable {
         uids: HashMap::new(),
         parent: Some(NonNull::from(parent)),
@@ -31,20 +36,29 @@ impl OffsetTable {
         self.uids.insert(symbol, offset);
     }
 
-    pub fn search(&self, symbol: u32) -> Option<u32> {
-        return unsafe { self.search_unsafe(symbol) };
+    pub fn search_current(&self, symbol: u32) -> u32 {
+        return *self.uids.get(&symbol).unwrap();
     }
 
-    unsafe fn search_unsafe(&self, symbol: u32) -> Option<u32> {
+    pub fn search(&self, symbol: u32) -> OffsetInfo {
+        return unsafe { self.search_unsafe(symbol).unwrap() };
+    }
+
+    unsafe fn search_unsafe(&self, symbol: u32) -> Option<OffsetInfo> {
         let mut current = NonNull::from(self);
         let mut uids = NonNull::from(&current.as_ref().uids);
+        let mut scope_offset = 0;
 
         loop {
-            if let Some(info) = uids.as_ref().get(&symbol) {
-                return Some(*info);
+            if let Some(&var_offset) = uids.as_ref().get(&symbol) {
+                return Some(OffsetInfo {
+                    scope_offset,
+                    var_offset,
+                });
             } else if let Some(parent) = current.as_ref().parent {
                 current = parent;
                 uids = NonNull::from(&current.as_ref().uids);
+                scope_offset += 1;
             } else {
                 return None;
             }
@@ -87,6 +101,7 @@ impl AsmContext {
 
 pub struct Assembler {
     functions: HashMap<u32, Vec<Opcode>>,
+    function_names: HashMap<u32, u32>,
     labels: Vec<OpLoc>,
 }
 
@@ -94,6 +109,7 @@ impl Assembler {
     pub fn new() -> Self {
         return Self {
             functions: HashMap::new(),
+            function_names: HashMap::new(),
             labels: Vec::new(),
         };
     }
@@ -118,12 +134,12 @@ impl Assembler {
         program.push(Opcode::HeapAlloc {
             header: ObjectHeader {
                 type_index: STACK_FRAME_TYPE_INDEX,
-                object_size: program_tree.declarations.len() as u32,
+                object_size: program_tree.declarations.len() as u32 + 1,
             },
         });
 
         for (idx, decl) in program_tree.declarations.iter().enumerate() {
-            offsets.declare(decl.name, idx as u32);
+            offsets.declare(decl.name, idx as u32 + 1);
         }
 
         self.assemble_block(
@@ -177,7 +193,8 @@ impl Assembler {
         parent: &OffsetTable,
     ) -> Vec<Opcode> {
         let mut current = Vec::new();
-        let stack_frame_size = (argument_uids.len() + declarations.len()) as u32;
+        let stack_frame_size = (argument_uids.len() + declarations.len()) as u32 + 1;
+        let return_index = -(argument_uids.len() as i32) - 1;
 
         current.push(Opcode::HeapAlloc {
             header: ObjectHeader {
@@ -185,10 +202,15 @@ impl Assembler {
                 object_size: stack_frame_size,
             },
         });
+        current.push(Opcode::GetLocal {
+            stack_offset: return_index,
+        });
+        current.push(Opcode::GetLocal { stack_offset: 0 });
+        current.push(Opcode::HeapWrite { offset: 0 });
 
         let mut offsets = offsets_(parent);
         let mut arg_offset = -1;
-        let mut offset = 0;
+        let mut offset = 1;
         for uid in argument_uids.iter() {
             offsets.declare(*uid, offset);
             current.push(Opcode::GetLocal {
@@ -208,7 +230,7 @@ impl Assembler {
         self.assemble_block(
             AsmContext::Function {
                 function_index: uid,
-                return_index: -(argument_uids.len() as i32) - 1,
+                return_index,
             },
             None,
             &mut current,
@@ -229,19 +251,45 @@ impl Assembler {
     ) {
         for stmt in stmts {
             match stmt {
+                TStmt::Function {
+                    uid,
+                    name,
+                    argument_names,
+                    declarations,
+                    stmts,
+                } => {
+                    self.function_names.insert(*uid, *name);
+                    current.push(Opcode::GetLocal { stack_offset: 0 });
+                    current.push(Opcode::GetLocal { stack_offset: 0 });
+                    current.push(Opcode::HeapWrite {
+                        offset: offsets.search_current(*name),
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        for stmt in stmts {
+            match stmt {
                 TStmt::Expr(expr) => {
-                    convert_expression_to_ops(current, &offsets, expr);
+                    self.convert_expression_to_ops(current, &offsets, expr);
                     current.push(Opcode::Pop);
                 }
                 TStmt::Assign { to, value } => {
-                    convert_expression_to_ops(current, &offsets, value);
-                    let offset = offsets.search(*to).unwrap();
-
+                    self.convert_expression_to_ops(current, &offsets, value);
+                    let info = offsets.search(*to);
                     current.push(Opcode::GetLocal { stack_offset: 0 });
-                    current.push(Opcode::HeapWrite { offset });
+
+                    for _ in 0..info.scope_offset {
+                        current.push(Opcode::HeapRead { offset: 0 });
+                    }
+
+                    current.push(Opcode::HeapWrite {
+                        offset: info.var_offset,
+                    });
                 }
                 TStmt::Return { ret_val } => {
-                    convert_expression_to_ops(current, &offsets, ret_val);
+                    self.convert_expression_to_ops(current, &offsets, ret_val);
                     if let AsmContext::Function {
                         function_index,
                         return_index,
@@ -260,7 +308,7 @@ impl Assembler {
                     if_true,
                     if_false,
                 } => {
-                    convert_expression_to_ops(current, &offsets, condition);
+                    self.convert_expression_to_ops(current, &offsets, condition);
 
                     let false_label = self.create_label(context.func_idx());
                     let end_label = self.create_label(context.func_idx());
@@ -285,7 +333,7 @@ impl Assembler {
                     let end = self.create_label(context.func_idx());
 
                     self.attach_label(begin, current.len() as u32);
-                    convert_expression_to_ops(current, &offsets, condition);
+                    self.convert_expression_to_ops(current, &offsets, condition);
                     current.push(Opcode::JumpNotIf(else_branch));
                     self.assemble_block(context, Some(end), current, offsets_(&offsets), block);
                     current.push(Opcode::Jump(begin));
@@ -307,64 +355,82 @@ impl Assembler {
             }
         }
     }
-}
 
-pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, expr: &TExpr) {
-    match expr {
-        TExpr::None => {
-            ops.push(Opcode::PushNone);
-        }
-        TExpr::Bool(value) => {
-            ops.push(Opcode::MakeBool(*value));
-        }
-        TExpr::Int(value) => {
-            ops.push(Opcode::MakeInt(*value as i64));
-        }
-        TExpr::Float(value) => {
-            ops.push(Opcode::MakeFloat(*value));
-        }
-        TExpr::Ident { id, .. } => {
-            let offset = offsets.search(*id).unwrap();
-            ops.push(Opcode::GetLocal { stack_offset: 0 });
-            ops.push(Opcode::HeapRead { offset });
-        }
-        TExpr::Minus { left, right, type_ } => {
-            convert_expression_to_ops(ops, offsets, left);
-            convert_expression_to_ops(ops, offsets, right);
-            if *type_ == Type::Float {
-                ops.push(Opcode::SubFloat);
-            } else {
-                ops.push(Opcode::SubInt);
+    fn convert_expression_to_ops(
+        &self,
+        ops: &mut Vec<Opcode>,
+        offsets: &OffsetTable,
+        expr: &TExpr,
+    ) {
+        match expr {
+            TExpr::None => {
+                ops.push(Opcode::PushNone);
             }
-        }
-        TExpr::Add { left, right, type_ } => {
-            convert_expression_to_ops(ops, offsets, left);
-            convert_expression_to_ops(ops, offsets, right);
-            if *type_ == Type::Float {
-                ops.push(Opcode::AddFloat);
-            } else {
-                ops.push(Opcode::AddInt);
+            TExpr::Bool(value) => {
+                ops.push(Opcode::MakeBool(*value));
             }
-        }
-        TExpr::Call {
-            callee_uid,
-            arguments,
-            ..
-        } => {
-            ops.push(Opcode::PushNone);
-            for arg in arguments.iter().rev() {
-                convert_expression_to_ops(ops, offsets, arg);
+            TExpr::Int(value) => {
+                ops.push(Opcode::MakeInt(*value as i64));
             }
-            ops.push(Opcode::Call(*callee_uid));
-            for _ in 0..arguments.len() {
-                ops.push(Opcode::Pop);
+            TExpr::Float(value) => {
+                ops.push(Opcode::MakeFloat(*value));
             }
-        }
-        TExpr::ECall { arguments } => {
-            for arg in arguments.iter().rev() {
-                convert_expression_to_ops(ops, offsets, arg);
+            TExpr::Ident { id, .. } => {
+                let info = offsets.search(*id);
+                ops.push(Opcode::GetLocal { stack_offset: 0 });
+                for _ in 0..info.scope_offset {
+                    ops.push(Opcode::HeapRead { offset: 0 });
+                }
+
+                ops.push(Opcode::HeapRead {
+                    offset: info.var_offset,
+                });
             }
-            ops.push(Opcode::ECall);
+            TExpr::Minus { left, right, type_ } => {
+                self.convert_expression_to_ops(ops, offsets, left);
+                self.convert_expression_to_ops(ops, offsets, right);
+                if *type_ == Type::Float {
+                    ops.push(Opcode::SubFloat);
+                } else {
+                    ops.push(Opcode::SubInt);
+                }
+            }
+            TExpr::Add { left, right, type_ } => {
+                self.convert_expression_to_ops(ops, offsets, left);
+                self.convert_expression_to_ops(ops, offsets, right);
+                if *type_ == Type::Float {
+                    ops.push(Opcode::AddFloat);
+                } else {
+                    ops.push(Opcode::AddInt);
+                }
+            }
+            TExpr::Call {
+                callee_uid,
+                arguments,
+                ..
+            } => {
+                let name = self.function_names[callee_uid];
+                let info = offsets.search(name);
+                ops.push(Opcode::GetLocal { stack_offset: 0 });
+                for _ in 0..info.scope_offset {
+                    ops.push(Opcode::HeapRead { offset: 0 });
+                }
+
+                for arg in arguments.iter().rev() {
+                    self.convert_expression_to_ops(ops, offsets, arg);
+                }
+
+                ops.push(Opcode::Call(*callee_uid));
+                for _ in 0..arguments.len() {
+                    ops.push(Opcode::Pop);
+                }
+            }
+            TExpr::ECall { arguments } => {
+                for arg in arguments.iter().rev() {
+                    self.convert_expression_to_ops(ops, offsets, arg);
+                }
+                ops.push(Opcode::ECall);
+            }
         }
     }
 }
