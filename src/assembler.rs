@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ptr::NonNull;
 
 pub struct OffsetTable {
-    pub uids: HashMap<u32, i32>,
+    pub uids: HashMap<u32, u32>,
     parent: Option<NonNull<OffsetTable>>,
 }
 
@@ -23,7 +23,7 @@ impl OffsetTable {
         };
     }
 
-    pub fn declare(&mut self, symbol: u32, offset: i32) {
+    pub fn declare(&mut self, symbol: u32, offset: u32) {
         if self.uids.contains_key(&symbol) {
             println!("{}", symbol);
             panic!();
@@ -31,11 +31,11 @@ impl OffsetTable {
         self.uids.insert(symbol, offset);
     }
 
-    pub fn search(&self, symbol: u32) -> Option<i32> {
+    pub fn search(&self, symbol: u32) -> Option<u32> {
         return unsafe { self.search_unsafe(symbol) };
     }
 
-    unsafe fn search_unsafe(&self, symbol: u32) -> Option<i32> {
+    unsafe fn search_unsafe(&self, symbol: u32) -> Option<u32> {
         let mut current = NonNull::from(self);
         let mut uids = NonNull::from(&current.as_ref().uids);
 
@@ -114,9 +114,16 @@ impl Assembler {
     pub fn assemble_program(&mut self, program_tree: TProgram) -> Vec<Opcode> {
         let mut program = Vec::new();
         let mut offsets = OffsetTable::new_global();
+
+        program.push(Opcode::HeapAlloc {
+            header: ObjectHeader {
+                type_index: STACK_FRAME_TYPE_INDEX,
+                object_size: program_tree.declarations.len() as u32,
+            },
+        });
+
         for (idx, decl) in program_tree.declarations.iter().enumerate() {
-            offsets.declare(decl.name, idx as i32);
-            program.push(Opcode::PushNone);
+            offsets.declare(decl.name, idx as u32);
         }
 
         self.assemble_block(
@@ -169,21 +176,33 @@ impl Assembler {
         stmts: &[TStmt],
         parent: &OffsetTable,
     ) -> Vec<Opcode> {
+        let mut current = Vec::new();
+        let stack_frame_size = (argument_uids.len() + declarations.len()) as u32;
+
+        current.push(Opcode::HeapAlloc {
+            header: ObjectHeader {
+                type_index: STACK_FRAME_TYPE_INDEX,
+                object_size: stack_frame_size,
+            },
+        });
+
         let mut offsets = offsets_(parent);
-        let mut offset = -1;
+        let mut arg_offset = -1;
+        let mut offset = 0;
         for uid in argument_uids.iter() {
             offsets.declare(*uid, offset);
-            offset -= 1;
+            current.push(Opcode::GetLocal {
+                stack_offset: arg_offset,
+            });
+            current.push(Opcode::GetLocal { stack_offset: 0 });
+            current.push(Opcode::HeapWrite { offset });
+
+            offset += 1;
+            arg_offset -= 1;
         }
-        offset = 0;
         for decl in declarations.iter() {
             offsets.declare(decl.name, offset);
             offset += 1;
-        }
-
-        let mut current = Vec::new();
-        for _ in 0..declarations.len() {
-            current.push(Opcode::PushNone);
         }
 
         self.assemble_block(
@@ -216,9 +235,10 @@ impl Assembler {
                 }
                 TStmt::Assign { to, value } => {
                     convert_expression_to_ops(current, &offsets, value);
-                    current.push(Opcode::SetLocal {
-                        stack_offset: offsets.search(*to).unwrap(),
-                    });
+                    let offset = offsets.search(*to).unwrap();
+
+                    current.push(Opcode::GetLocal { stack_offset: 0 });
+                    current.push(Opcode::HeapWrite { offset });
                 }
                 TStmt::Return { ret_val } => {
                     convert_expression_to_ops(current, &offsets, ret_val);
@@ -304,9 +324,9 @@ pub fn convert_expression_to_ops(ops: &mut Vec<Opcode>, offsets: &OffsetTable, e
             ops.push(Opcode::MakeFloat(*value));
         }
         TExpr::Ident { id, .. } => {
-            ops.push(Opcode::GetLocal {
-                stack_offset: offsets.search(*id).unwrap(),
-            });
+            let offset = offsets.search(*id).unwrap();
+            ops.push(Opcode::GetLocal { stack_offset: 0 });
+            ops.push(Opcode::HeapRead { offset });
         }
         TExpr::Minus { left, right, type_ } => {
             convert_expression_to_ops(ops, offsets, left);
