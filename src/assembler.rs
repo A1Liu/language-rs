@@ -92,10 +92,16 @@ enum AsmContext {
 
 impl AsmContext {
     pub fn func_idx(&self) -> u32 {
-        match self {
+        return match self {
             Self::Global => 0,
             Self::Function { function_index, .. } => *function_index,
-        }
+        };
+    }
+    pub fn return_idx(&self) -> i32 {
+        return match self {
+            Self::Global => panic!("return index for global scope doesn't make sense"),
+            Self::Function { return_index, .. } => *return_index,
+        };
     }
 }
 
@@ -202,11 +208,13 @@ impl Assembler {
                 object_size: stack_frame_size,
             },
         });
+
         current.push(Opcode::GetLocal {
             stack_offset: return_index,
         });
         current.push(Opcode::GetLocal { stack_offset: 0 });
         current.push(Opcode::HeapWrite { offset: 0 });
+
         current.push(Opcode::PushNone);
         current.push(Opcode::SetLocal {
             stack_offset: return_index,
@@ -294,18 +302,10 @@ impl Assembler {
                 }
                 TStmt::Return { ret_val } => {
                     self.convert_expression_to_ops(current, &offsets, ret_val);
-                    if let AsmContext::Function {
-                        function_index,
-                        return_index,
-                    } = context
-                    {
-                        current.push(Opcode::SetLocal {
-                            stack_offset: return_index,
-                        });
-                        current.push(Opcode::Return);
-                    } else {
-                        panic!("shouldn't see return statement outside of function context");
-                    }
+                    current.push(Opcode::SetLocal {
+                        stack_offset: context.return_idx(),
+                    });
+                    current.push(Opcode::Return);
                 }
                 TStmt::If {
                     condition,

@@ -40,6 +40,7 @@ pub enum Opcode {
     HeapAlloc { header: ObjectHeader },
     Return,
     Call(u32),      // absolute address
+    CallDyn,        // Absolute address
     JumpIf(u32),    // absolute address
     JumpNotIf(u32), // absolute address
     Jump(u32),      // absolute address
@@ -200,6 +201,22 @@ where
                     self.pc = address as usize;
                     return;
                 }
+            }
+            CallDyn => {
+                let func = self.stack.pop().unwrap();
+                let func_header = self.get_obj_header(func);
+                if func_header != INT_HEADER {
+                    panic!("need to have int header for jump call");
+                }
+
+                let func = self.heap[func] as usize;
+
+                self.fp_ra_stack.push(self.pc + 1);
+                self.fp_ra_stack.push(self.fp);
+
+                self.pc = func;
+                self.fp = self.stack.len();
+                return;
             }
             Call(func) => {
                 self.fp_ra_stack.push(self.pc + 1);
