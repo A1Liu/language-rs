@@ -75,6 +75,10 @@ const BOOL_HEADER: ObjectHeader = ObjectHeader {
 };
 const STRING_TYPE_INDEX: u32 = 3;
 pub const STACK_FRAME_TYPE_INDEX: u32 = 4;
+pub const FUNCTION_HEADER: ObjectHeader = ObjectHeader {
+    type_index: 5,
+    object_size: 2,
+};
 
 pub const PRINT_PRIMITIVE: u64 = 0;
 pub const FLOAT_CAST: u64 = 1;
@@ -265,16 +269,21 @@ where
                             object_size,
                         } => {
                             let str_begin = (&self.heap[arg]) as *const u64 as *const u8;
-                            let str_bytes =
-                                unsafe { slice::from_raw_parts(str_begin, object_size as usize) };
-                            write!(self.stdout, "{}\n", unsafe {
-                                std::str::from_utf8_unchecked(str_bytes)
-                            })
-                            .expect("should not have failed");
+                            unsafe {
+                                let str_bytes =
+                                    slice::from_raw_parts(str_begin, object_size as usize);
+                                write!(
+                                    self.stdout,
+                                    "{}\n",
+                                    std::str::from_utf8_unchecked(str_bytes)
+                                )
+                                .expect("should not have failed");
+                            }
                         }
-                        x => {
-                            panic!("got print_primitive ecall arg of invalid type {:?}", x);
+                        FUNCTION_HEADER => {
+                            write!(self.stdout, "function\n").expect("should not have failed")
                         }
+                        x => panic!("got print_primitive ecall arg of invalid type {:?}", x),
                     }
                     self.stack.push(NONE_VALUE);
                 }

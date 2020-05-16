@@ -1,7 +1,7 @@
 use crate::lexer::*;
 use crate::syntax_tree::*;
 use crate::util::*;
-use std::ptr;
+use std::mem;
 
 pub struct Parser<'a, 'b>
 where
@@ -510,14 +510,16 @@ where
                 // return Ok(Expr::StringLiteral { id, value, view });
             }
             LParen(tup_begin) => {
-                let tup = self.try_parse_expr_tup()?;
-                let slice = match &tup {
+                let mut tup = self.try_parse_expr_tup()?;
+                let slice = match &mut tup {
                     Expr::Tup { values, view } => values,
                     _ => panic!(),
                 };
 
                 if slice.len() == 1 {
-                    return Ok(unsafe { ptr::read(&slice[0]) });
+                    let mut e = Expr::None(newr(0, 0));
+                    mem::swap(&mut e, &mut slice[0]);
+                    return Ok(e);
                 } else {
                     return Ok(tup);
                 }
