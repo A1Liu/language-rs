@@ -11,12 +11,14 @@ struct OffsetInfo {
 struct OffsetTable {
     pub uids: HashMap<u32, u32>,
     parent: Option<NonNull<OffsetTable>>,
+    is_function: bool,
 }
 
-fn offsets_(parent: &OffsetTable) -> OffsetTable {
+fn offsets_(parent: &OffsetTable, is_function: bool) -> OffsetTable {
     return OffsetTable {
         uids: HashMap::new(),
         parent: Some(NonNull::from(parent)),
+        is_function,
     };
 }
 
@@ -25,6 +27,7 @@ impl OffsetTable {
         return Self {
             uids: HashMap::new(),
             parent: None,
+            is_function: false,
         };
     }
 
@@ -56,9 +59,12 @@ impl OffsetTable {
                     var_offset,
                 });
             } else if let Some(parent) = current.as_ref().parent {
+                if current.as_ref().is_function {
+                    scope_offset += 1;
+                }
+
                 current = parent;
                 uids = NonNull::from(&current.as_ref().uids);
-                scope_offset += 1;
             } else {
                 return None;
             }
@@ -220,7 +226,7 @@ impl Assembler {
             stack_offset: return_index,
         });
 
-        let mut offsets = offsets_(parent);
+        let mut offsets = offsets_(parent, true);
         let mut arg_offset = -1;
         let mut offset = 1;
         for uid in argument_uids.iter() {
@@ -318,10 +324,22 @@ impl Assembler {
                     let end_label = self.create_label(context.func_idx());
 
                     current.push(Opcode::JumpNotIf(false_label));
-                    self.assemble_block(context, loop_label, current, offsets_(&offsets), if_true);
+                    self.assemble_block(
+                        context,
+                        loop_label,
+                        current,
+                        offsets_(&offsets, false),
+                        if_true,
+                    );
                     current.push(Opcode::Jump(end_label));
                     self.attach_label(false_label, current.len() as u32);
-                    self.assemble_block(context, loop_label, current, offsets_(&offsets), if_false);
+                    self.assemble_block(
+                        context,
+                        loop_label,
+                        current,
+                        offsets_(&offsets, false),
+                        if_false,
+                    );
                     self.attach_label(end_label, current.len() as u32);
                 }
                 TStmt::Break => {
@@ -339,10 +357,22 @@ impl Assembler {
                     self.attach_label(begin, current.len() as u32);
                     self.convert_expression_to_ops(current, &offsets, condition);
                     current.push(Opcode::JumpNotIf(else_branch));
-                    self.assemble_block(context, Some(end), current, offsets_(&offsets), block);
+                    self.assemble_block(
+                        context,
+                        Some(end),
+                        current,
+                        offsets_(&offsets, false),
+                        block,
+                    );
                     current.push(Opcode::Jump(begin));
                     self.attach_label(else_branch, current.len() as u32);
-                    self.assemble_block(context, loop_label, current, offsets_(&offsets), e_block);
+                    self.assemble_block(
+                        context,
+                        loop_label,
+                        current,
+                        offsets_(&offsets, false),
+                        e_block,
+                    );
                     self.attach_label(end, current.len() as u32);
                 }
                 TStmt::Function {

@@ -168,7 +168,11 @@ where
             }
             HeapRead { offset } => {
                 let ptr = self.stack.pop().unwrap();
-                self.stack.push(self.heap[ptr + offset as usize] as usize);
+                let value = self.heap[ptr + offset as usize] as usize;
+                if DEBUG {
+                    println!("       reading value: {}", value);
+                }
+                self.stack.push(value);
             }
             HeapWrite { offset } => {
                 let ptr = self.stack.pop().unwrap();
